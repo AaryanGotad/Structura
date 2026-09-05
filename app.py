@@ -1,183 +1,245 @@
-import streamlit as st
+# import streamlit as st
+
+# import tensorflow as tf
+# import keras_hub
+
+# import utilities.utils as utilities
+# from pathlib import Path
+# import threading
+
+# import tensorflow as tf
+# import keras_hub
+
+import keras_hub
 
 import tensorflow as tf
-from PIL import Image
+import keras_hub
+import zipfile
+import os
 
-import threading
-from pathlib import Path
-from utils import utilities
-import copy
+# # --------------------------------------------------
+# # Recover tokenizer vocabulary from structura.keras
+# # --------------------------------------------------
 
-# thread safety setup
-MODEL_LOCK = threading.Lock()
+# MODEL_PATH = "model/structura.keras"
+# EXTRACT_DIR = "model_extract"
 
-# -----------------( DL MODEL LOADING )-----------------
-@st.cache_resource
-def load_model():
-    """
-    Loads the model once gloabally and caches it across all sessions.
-    """
-    model_path = Path(__file__).resolve().parent / 'model' / 'FoodSight.keras'
-    return tf.keras.models.load_model(model_path)
+# with zipfile.ZipFile(MODEL_PATH, "r") as z:
+#     z.extract(
+#         "assets/layers/bert_text_embedder_preprocessor/tokenizer/vocabulary.txt",
+#         EXTRACT_DIR
+#     )
 
-left_col, middle_col, right_col = st.columns([1, 2, 1])
+# vocab_path = os.path.join(
+#     EXTRACT_DIR,
+#     "assets",
+#     "layers",
+#     "bert_text_embedder_preprocessor",
+#     "tokenizer",
+#     "vocabulary.txt"
+# )
 
-with middle_col:
-    # initializing model
-    try:
-        with st.spinner('Loading model...'):
-            model = load_model()
-    except Exception as exc:
-        st.error(f"Failed to load model: {exc}")
-        st.stop()
+# print("Vocabulary exists:", os.path.exists(vocab_path))
 
-# -----------------( TITLE & HEADING )-----------------
-st.markdown(
-    """
-        <h1 
-            style='text-align: center;
-                   font-size: 4rem;
-                   letter-spacing: 0.03rem;
-                   font-family: "Copperplate";
-                   text-decoration: underline;
-                   margin-bottom: 0.05em;'>
-            FoodSight
-        </h1>
-    """,
-    unsafe_allow_html=True)
+# # --------------------------------------------------
+# # Reconstruct MiniLM
+# # --------------------------------------------------
 
-st.markdown(
-    """
-        <h2 
-            style='text-align: center;
-                    font-size: 1.95rem;
-                    letter-spacing: 0.15rem;
-                    font-family: "Roboto";'>
-            See what's on your plate
-        </h2>
-    """,
-    unsafe_allow_html=True)
+# backbone = keras_hub.models.BertBackbone.from_preset(
+#     "all_minilm_l6_v2_en"
+# )
 
-st.write("")
+# tokenizer = keras_hub.tokenizers.BertTokenizer(
+#     vocabulary=vocab_path,
+#     lowercase=True,
+#     strip_accents=False,
+#     split=True,
+#     suffix_indicator="##",
+#     oov_token="[UNK]",
+# )
 
-# -----------------( IMAGE UPLOAD LOGIC )-----------------
-# Initializing persistent session state for the target image
-if "saved_image" not in st.session_state:
-    st.session_state['saved_image'] = None
+# preprocessor = keras_hub.models.BertTextEmbedderPreprocessor(
+#     tokenizer=tokenizer,
+#     sequence_length=256,
+#     truncate="round_robin"
+# )
 
-if st.session_state['saved_image'] is None:
-    st.subheader('Provide an Image')
+# embedder = keras_hub.models.BertTextEmbedder(
+#     backbone=backbone,
+#     preprocessor=preprocessor,
+#     pooling_mode="mean",
+#     normalize=True
+# )
 
-    # rendering input options if no image is currently stored
-    uploaded_file = st.file_uploader(
-        label="Upload a photo",
-        type=['png', 'jpg', 'jpeg']
-    )
+# # --------------------------------------------------
+# # Test
+# # --------------------------------------------------
 
-    # st.markdown(
-    #     """
-    #         <h2 
-    #             style='text-align: center;
-    #                     font-size: 1.05rem;
-    #                     letter-spacing: 0.15rem;
-    #                     font-family: "Roboto";'>
-    #             OR
-    #         </h2>
-    #     """,
-    #     unsafe_allow_html=True)
+# sample = [
+#     "Patients with diabetes had increased cardiovascular risk."
+# ]
 
-    # # CAPTURE AN IMAGE
-    # camera_file = st.camera_input("Capture a Photo")
+# processed = embedder.preprocessor(sample)
+# embedding = embedder(processed)
 
-    # if either widget recieved a new file
-    # active_input = camera_file if camera_file is not None else uploaded_file
-    active_input = uploaded_file
+# print("Embedding shape:", embedding.shape)
 
-    if active_input is not None:
-        # save file to state, then force a fresh rerun
-        pil_image = Image.open(active_input)
+# print("Pooling:", embedder.pooling_mode)
+# print("Normalize:", embedder.normalize)
+# print("Vocabulary size:", embedder.backbone.vocabulary_size)
+# print("Layers:", embedder.backbone.num_layers)
+# print("Hidden dim:", embedder.backbone.hidden_dim)
 
-        st.session_state['saved_image'] = pil_image
-        st.rerun()
+# # 1. Load the MiniLM backbone architecture + pretrained weights
+# backbone = keras_hub.models.BertBackbone.from_preset(
+#     "all_minilm_l6_v2_en"
+# )
 
-else:
-    # render preview only
-    st.subheader('Uploaded Photo')
+# # 2. Reuse the vocabulary recovered from your .keras file
+# tokenizer = keras_hub.tokenizers.BertTokenizer(
+#     vocabulary=vocab_path,
+#     lowercase=True,
+#     strip_accents=False,
+#     split=True,
+#     suffix_indicator="##",
+#     oov_token="[UNK]",
+# )
 
-    left_col, right_col = st.columns([2, 1])
+# # 3. Reconstruct the exact preprocessor configuration
+# preprocessor = keras_hub.models.BertTextEmbedderPreprocessor(
+#     tokenizer=tokenizer,
+#     sequence_length=256,
+#     truncate="round_robin"
+# )
 
-    with left_col:
-        st.image(st.session_state['saved_image'])
+# # 4. Construct the TextEmbedder manually
+# embedder = keras_hub.models.BertTextEmbedder(
+#     backbone=backbone,
+#     preprocessor=preprocessor,
+#     pooling_mode="mean",
+#     normalize=True
+# )
 
-    with right_col:
-        # clare the image and bring the input elements back
-        if st.button("Delete and Upload Another"):
-            st.session_state['saved_image'] = None
-            st.rerun()
+# print(backbone)
+# print(embedder)
 
-        st.space('small')
+token_inputs = layers.Input(
+    shape=(),
+    dtype='string',
+    name='token_inputs'
+)
 
-        predict_button = st.button('Identify This')
-    
-    if predict_button:
-        with st.spinner('Identifying...'):
-            # preprocessing image
-            processd_image = utilities.preprocess_image(st.session_state['saved_image'])
+preprocessed_tokens = embedder.preprocessor(token_inputs)
+token_embeddings = embedder(preprocessed_tokens)
+token_outputs = layers.Dense(
+    128,
+    activation='relu'
+)(token_embeddings)
 
-            with MODEL_LOCK:
-                predictions = model.predict(processd_image)
+token_model = tf.keras.Model(
+    inputs=token_inputs,
+    outputs=token_outputs
+)
 
-            # top 5 predictions with class names and confidence probabilities
-            top_5_preds = utilities.top_k_preds(predictions)
+# MODEL_LOCK = threading.Lock()
 
-            # displaying results
-            st.success('Identified!')
+# @st.cache_resource
+# def load_model():
+#     """
+#     Loads a TensorFlow SavedModel from the specified path and returns the loaded model.
+#     The function ensures that the model is loaded onto the CPU for inference.
+#     """
+#     tf.keras.backend.clear_session()  # clear any existing models from memory
 
-            for i in range(len(top_5_preds)):
-                top_5_preds[i]['Probability'] = float(top_5_preds[i]['confidence'])
-                top_5_preds[i]['confidence'] = round(top_5_preds[i]['confidence'] * 100, 2)
+#     CURR_DIR = Path(__file__).resolve().parent
+#     model_path = CURR_DIR / "model" / "structura.keras"
 
-            left_col, middle_col, right_col = st.columns([1, 2, 1])
+#     # loading the SavedModel directory, ensuring all components are loaded to CPU
+#     with tf.device('/CPU:0'):
+#         model = tf.keras.models.load_model(model_path)
 
-            with right_col:
-                # displaying raw model probability values
-                with st.popover('Raw Model Outputs'):                    
+#     return model
 
-                    raw_model_outputs = copy.deepcopy(top_5_preds)
-                    for output in raw_model_outputs:
-                        output.pop('confidence', None)
+# left_col, middle_col, right_col = st.columns([1, 2, 1])
 
-                    st.dataframe(raw_model_outputs)  
+# with middle_col:
+#     # initializing model
+#     try:
+#         with st.spinner('Loading Model...'):
+#             model = load_model()
+#     except Exception as exc:
+#         st.error(f"Failed to load model: {exc}")
+#         st.stop()       
 
-            st.write('We think it\'s a ', top_5_preds[0]['label'],
-                    'with a confidence of', round(top_5_preds[0]['Probability'] * 100, 2), '%')
+# # -----------------( TITLE & HEADING )-----------------
+# st.markdown(
+#     """
+#         <h1 
+#             style='text-align: center;
+#                    font-size: 4rem;
+#                    letter-spacing: 0.03rem;
+#                    font-family: "Copperplate";
+#                    text-decoration: underline;
+#                    margin-bottom: 0.05em;'>
+#             Structura
+#         </h1>
+#     """,
+#     unsafe_allow_html=True)
 
-            st.progress(top_5_preds[0]['Probability'])
+# st.markdown(
+#     """
+#         <h2 
+#             style='text-align: center;
+#                     font-size: 1.95rem;
+#                     letter-spacing: 0.15rem;
+#                     font-family: "Roboto";'>
+#             Understand what the Reasearch is About
+#         </h2>
+#     """,
+#     unsafe_allow_html=True)
 
-            st.space('medium')
+# # -----------------( INPUT )-----------------
+# def clear_text():
+#     """
+#     Clears the text area input by setting its value to an empty string.
+#     This function is used as a callback for the "Clear" button in the Streamlit app.
+#     """
+#     st.session_state['abstract_input'] = ''
 
-            with st.expander('Top 5 Predictions'):
+# st.text_area(
+#     label="Paste Abstract Here",
+#     placeholder="Paste abstract of a research paper here...",
+#     height='content',
+#     key="abstract_input"
+# )
 
-                st.dataframe(
-                    top_5_preds,
-                    column_config={
-                            'label': st.column_config.TextColumn("Label"),
-                            'confidence': st.column_config.NumberColumn(
-                                'Confidence %',
-                                format="%.2f"
-                            ),
-                            'Probability': st.column_config.ProgressColumn(
-                                'Confidence Score',
-                                help='Model predication confidence level',
-                                format="%.2f", # to show numeric percemtage/decimal text beside the bar
-                                min_value=0.0,
-                                max_value=1.0
-                            ),
-                        },
-                        hide_index=True
-                    )
-           
+# st.button("Clear", on_click=clear_text)
 
 
-            
+# # -----------------( OUTPUT )-----------------
+# abstract_line_numbers_one_hot, abstract_total_lines_one_hot, abstract_lines, abstract_chars = utilities.preprocess_text(st.session_state['abstract_input'])
+
+# if not abstract_lines:
+#     st.info('Paste an abstract to structure it.')
+#     st.stop()
+
+# with st.spinner('Structuring...'):
+#     with tf.device('/CPU:0'):
+#         # model_pred_probs = model(
+#         #     {
+#         #         'line_number_input': abstract_line_numbers_one_hot,
+#         #         'total_lines_input': abstract_total_lines_one_hot,
+#         #         'token_inputs': tf.constant(abstract_lines),
+#         #         'char_inputs': tf.expand_dims(tf.constant(abstract_chars), axis=-1),
+#         #     },
+#         #     training=False,
+#         # )
+#         model_pred_probs = model.predict(x=(abstract_line_numbers_one_hot,
+#                                             abstract_total_lines_one_hot,
+#                                             tf.constant(abstract_lines),
+#                                             tf.expand_dims(tf.constant(abstract_chars), axis=-1)))
+
+# output = utilities.output_formatting(model_pred_probs, abstract_lines)
+
+# output
    

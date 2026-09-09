@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-StructuraApplication<structura>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.aaryan.structura.StructuraApplication",
+            "projectName": "structura",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}

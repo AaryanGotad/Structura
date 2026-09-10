@@ -39,7 +39,7 @@ const ApiService = {
             return 'http://localhost:8080';
         }
 
-        const forwardedBackendHost = hostname.replace(/-5500(?=\.)/, '-8080');
+        const forwardedBackendHost = hostname.replace(/-\d+(?=\.app\.github\.dev$)/, '-8080');
         return `${protocol}//${forwardedBackendHost}`;
     },
 
@@ -174,7 +174,7 @@ const App = {
 
         let html = ``;
         groups.forEach(group => {
-            const meanConf = (group.totalConfidence / group.lines.length * 100).toFixed(1);
+            const meanConf = (group.totalConfidence / group.lines.length * 100).toFixed(2);
             const proseText = group.lines.join(' ');
             
             html += `

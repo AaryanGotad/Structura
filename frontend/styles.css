@@ -31,7 +31,7 @@ html[data-theme="dark"] {
     
     /* Liquid Glass Variables */
     --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
-    --glass-bg-strong: rgba(24, 24, 28, 0.95); /* High opacity for popover readability */
+    --glass-bg-strong: rgba(24, 24, 28, 0.95);
     --glass-border: rgba(255, 255, 255, 0.04);
     --edge-highlight: linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.04) 30%, transparent 100%);
     
@@ -57,7 +57,7 @@ html[data-theme="light"] {
     
     /* Liquid Glass Variables */
     --glass-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.4) 100%);
-    --glass-bg-strong: rgba(255, 255, 255, 0.95); /* High opacity for popover readability */
+    --glass-bg-strong: rgba(255, 255, 255, 0.95);
     --glass-border: rgba(0, 0, 0, 0.03);
     --edge-highlight: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.2) 30%, rgba(0, 0, 0, 0.02) 100%);
     
@@ -369,7 +369,7 @@ textarea:focus {
 }
 
 .result-card {
-    padding: 40px;
+    padding: 88px 40px 40px;
     border-radius: var(--radius-lg);
 }
 
@@ -450,7 +450,11 @@ textarea:focus {
     position: absolute;
     top: 32px;
     right: 32px;
+    left: 32px;
+    margin-bottom: 32px;
     z-index: 20;
+    display: flex;
+    justify-content: flex-end;
 }
 
 .raw-toggle-btn {
@@ -471,21 +475,22 @@ textarea:focus {
     position: absolute;
     top: calc(100% + 12px);
     right: 0;
-    width: 360px;
-    max-height: 400px;
+    width: 80%;
+    min-width: 520px;
+    max-height: min(620px, calc(100vh - 96px));
     border-radius: var(--radius-md);
     padding: 20px;
     overflow-y: auto;
     /* Polished spring entrance originating from button */
     transform-origin: top right;
-    transform: translateY(-10px) scale(0.9);
+    transform: translateY(-10px);
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.2s ease-out, visibility 0.2s ease-out, transform var(--transition-spring);
 }
 
 .raw-popover.active {
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
     opacity: 1;
     visibility: visible;
 }
@@ -498,6 +503,65 @@ textarea:focus {
     white-space: pre-wrap;
     word-wrap: break-word;
     line-height: 1.6;
+}
+
+.raw-table-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+.raw-scores-table {
+    width: 100%;
+    min-width: 820px;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.raw-scores-table th,
+.raw-scores-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--glass-border);
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+
+.raw-scores-table thead th {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.raw-scores-table th:first-child,
+.raw-scores-table td:first-child,
+.raw-scores-table th:nth-child(2),
+.raw-scores-table td:nth-child(2),
+.raw-scores-table th:nth-child(3),
+.raw-scores-table td:nth-child(3) {
+    text-align: left;
+}
+
+.raw-scores-table th:nth-child(3),
+.raw-scores-table td:nth-child(3) {
+    min-width: 360px;
+    white-space: normal;
+}
+
+.raw-scores-table tbody th {
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.raw-label {
+    color: var(--accent-color);
+    font-weight: 500;
+}
+
+.raw-line {
+    color: var(--text-main);
 }
 
 .alt-predictions {
@@ -548,7 +612,7 @@ textarea:focus {
 }
 
 .alt-content-inner {
-    padding: 0 32px 32px;
+    padding: 56px 32px 32px;
 }
 
 .alt-content-inner .structured-prose-block {
@@ -703,12 +767,29 @@ footer {
     to { opacity: 1; transform: translateY(0); }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 760px) {
     .action-bar { flex-direction: column; }
     .result-card, .limitations-section { padding: 32px 24px; }
     .brand-wordmark { font-size: 2.25rem; }
-    .raw-output-wrapper { position: static; margin-bottom: 24px; text-align: right; }
-    .raw-popover { right: 0; left: 0; width: 100%; top: calc(100% + 8px); }
+    .raw-output-wrapper {
+        position: relative;
+        top: auto;
+        right: auto;
+        left: auto;
+        margin-bottom: 24px;
+        text-align: right;
+        display: block;
+    }
+    .raw-popover {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        left: 0;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        transform-origin: top center;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

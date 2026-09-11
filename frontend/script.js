@@ -190,18 +190,57 @@ const App = {
         return html;
     },
 
-    renderResults(predictions, rawOutputStr) {
+    generateRawScoresTableHTML(predictions) {
+        const classNames = ['BACKGROUND', 'CONCLUSIONS', 'METHODS', 'OBJECTIVE', 'RESULTS'];
+        const headerHTML = classNames.map(className => `<th scope="col">${className}</th>`).join('');
+        const rowsHTML = predictions.map((item, index) => {
+            const scores = Array.isArray(item.rawScores) ? item.rawScores : [];
+            const scoreCells = classNames.map((_, scoreIndex) => {
+                const score = Number(scores[scoreIndex]);
+                return `<td>${Number.isFinite(score) ? score.toFixed(6) : '-'}</td>`;
+            }).join('');
+
+            return `
+                <tr>
+                    <th scope="row">${index + 1}</th>
+                    <td><span class="raw-label">${this.escapeHTML(item.predictedClass)}</span></td>
+                    <td class="raw-line">${this.escapeHTML(item.text)}</td>
+                    ${scoreCells}
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <div class="raw-table-scroll" role="region" aria-label="Raw prediction scores" tabindex="0">
+                <table class="raw-scores-table">
+                    <caption class="visually-hidden">Raw probability scores for each analyzed line</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Assigned label</th>
+                            <th scope="col">Line</th>
+                            ${headerHTML}
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHTML}</tbody>
+                </table>
+            </div>
+        `;
+    },
+
+    renderResults(predictions) {
         const primaryHTML = this.generateStructuredParagraphsHTML(predictions, false);
         const altHTML = this.generateStructuredParagraphsHTML(predictions, true);
+        const rawScoresTableHTML = this.generateRawScoresTableHTML(predictions);
 
         const html = `
             <section class="results-section">
                 <h2 class="section-heading">Structured abstract</h2>
                 <div class="result-card glass-panel">
                     <div class="raw-output-wrapper">
-                        <button class="raw-toggle-btn">Raw output</button>
-                        <div class="raw-popover">
-                            <pre><code>${this.escapeHTML(rawOutputStr)}</code></pre>
+                        <button class="raw-toggle-btn" aria-expanded="false" aria-controls="raw-output-popover">Raw output</button>
+                        <div class="raw-popover" id="raw-output-popover">
+                            ${rawScoresTableHTML}
                         </div>
                     </div>
                     

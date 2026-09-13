@@ -27,6 +27,6 @@ public class AbstractAnalysisController {
         if (request == null || request.text() == null || request.text().isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
-        return ResponseEntity.ok(analysisService.analyze(request.text(), "http://localhost:8000/analyze"));
+        return ResponseEntity.ok(analysisService.analyze(request.text()));
     }
 }

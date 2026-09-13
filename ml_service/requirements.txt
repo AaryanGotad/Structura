@@ -1,0 +1,6 @@
+fastapi>=0.115.6
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.5
+spacy>=3.8.4
+tensorflow>=2.21.0
+keras-hub>=0.31.0

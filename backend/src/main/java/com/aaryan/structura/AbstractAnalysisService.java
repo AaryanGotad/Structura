@@ -2,6 +2,7 @@ package com.aaryan.structura;
 
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -32,17 +33,21 @@ public class AbstractAnalysisService {
     // private final ObjectWriter prettyJsonWriter;
 
     private final RestClient restClient;
+    private final String mlServiceUrl;
 
-    public AbstractAnalysisService(RestClient restClient) {
+    public AbstractAnalysisService(
+            RestClient restClient,
+            @Value("${structura.ml-service-url}") String mlServiceUrl) {
         // this.prettyJsonWriter = objectMapper.writerWithDefaultPrettyPrinter();
         this.restClient = restClient;
+        this.mlServiceUrl = mlServiceUrl;
     }
 
-    public AnalyzeResponseDTO analyze(String text, String targeturl) {
+    public AnalyzeResponseDTO analyze(String text) {
         AnalyzeRequestDTO payload = new AnalyzeRequestDTO(text);
 
         return restClient.post()
-                .uri(targeturl)
+                .uri(mlServiceUrl)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(payload)
                 .retrieve()

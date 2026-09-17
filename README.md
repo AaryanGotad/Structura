@@ -8,11 +8,9 @@ The project is built as three cooperating services:
 
 - A plain HTML, CSS, and JavaScript frontend served by Nginx
 - A Spring Boot backend that validates requests and coordinates analysis
-- A FastAPI and TensorFlow service that preprocesses text and runs the model
+- A FastAPI and TensorFlow service that preprocesses text and runs the model inference
 
 The goal is not to generate or rewrite a scientific abstract. Structura identifies the likely role of each sentence in an existing abstract so that the organization of the research is easier to scan.
-
-> **Project status:** The application flow and inference architecture are implemented. Training history, dataset provenance, evaluation metrics, and deployment information are intentionally left as fill-in sections below because those details are not stored in this repository.
 
 ---
 
@@ -22,12 +20,179 @@ The goal is not to generate or rewrite a scientific abstract. Structura identifi
 - Five structural classes: `BACKGROUND`, `OBJECTIVE`, `METHODS`, `RESULTS`, and `CONCLUSIONS`
 - A primary prediction and an alternative prediction for every sentence
 - Confidence scores for both predictions
-- Raw five-class probability scores in the API response
+<img src="static/docImages/prim_alt_pred.png" alt="Primary & Alternate prediction UI" style="padding-left: 30%; width: 50%;">  
+<br>
+
+- Raw five-class probability scores in the API response and UI
+<img src="static/docImages/example_api_response.png" alt="Sample API Response Text" style="padding-left: 30%; width: 50%;">
+<br>
+
+**API RESPONSE FOR THE ABOVE SAMPLE**
+<div style="margin-left: 17.5%; width: 80%; overflow: auto;">
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "text": "Chronic low back pain remains a major cause of disability worldwide, with limited long-term efficacy from standard physical therapies.",
+      "predictedClass": "BACKGROUND",
+      "confidence": 0.6914839148521423,
+      "alternative": {
+        "predictedClass": "OBJECTIVE",
+        "confidence": 0.11462412029504776
+      },
+      "rawScores": [
+        0.6914839148521423,
+        0.10128433257341385,
+        0.036723311990499496,
+        0.11462412029504776,
+        0.055884331464767456
+      ]
+    },
+    {
+      "text": "We aimed to evaluate whether an 8-week mindfulness-based stress reduction (MBSR) program reduces pain intensity compared to usual care.",
+      "predictedClass": "OBJECTIVE",
+      "confidence": 0.6512438058853149,
+      "alternative": {
+        "predictedClass": "BACKGROUND",
+        "confidence": 0.26813048124313354
+      },
+      "rawScores": [
+        0.26813048124313354,
+        0.031246602535247803,
+        0.02932562679052353,
+        0.6512438058853149,
+        0.02005341835319996
+      ]
+    },
+    {
+      "text": "A randomized, parallel-group trial was conducted with 240 adults aged 18 to 65 years diagnosed with persistent non-specific low back pain.",
+      "predictedClass": "METHODS",
+      "confidence": 0.8127331137657166,
+      "alternative": {
+        "predictedClass": "CONCLUSIONS",
+        "confidence": 0.0701058879494667
+      },
+      "rawScores": [
+        0.037877969443798065,
+        0.0701058879494667,
+        0.8127331137657166,
+        0.03680719807744026,
+        0.042475901544094086
+      ]
+    },
+    {
+      "text": "Participants were randomly assigned 1:1 to either the MBSR group or a waitlist control receiving standard medical care.",
+      "predictedClass": "METHODS",
+      "confidence": 0.8258354663848877,
+      "alternative": {
+        "predictedClass": "CONCLUSIONS",
+        "confidence": 0.0656890720129013
+      },
+      "rawScores": [
+        0.029055284336209297,
+        0.0656890720129013,
+        0.8258354663848877,
+        0.03681573271751404,
+        0.0426044762134552
+      ]
+    },
+    {
+      "text": "The primary outcome was the change in back pain intensity measured on a 10-point visual analog scale at 24 weeks.",
+      "predictedClass": "METHODS",
+      "confidence": 0.8740441203117371,
+      "alternative": {
+        "predictedClass": "CONCLUSIONS",
+        "confidence": 0.038470081984996796
+      },
+      "rawScores": [
+        0.0297878235578537,
+        0.038470081984996796,
+        0.8740441203117371,
+        0.037222184240818024,
+        0.02047572284936905
+      ]
+    },
+    {
+      "text": "A total of 218 participants completed the final 24-week follow-up assessment.",
+      "predictedClass": "RESULTS",
+      "confidence": 0.6778584122657776,
+      "alternative": {
+        "predictedClass": "METHODS",
+        "confidence": 0.19731244444847107
+      },
+      "rawScores": [
+        0.025561530143022537,
+        0.06460944563150406,
+        0.19731244444847107,
+        0.03465818986296654,
+        0.6778584122657776
+      ]
+    },
+    {
+      "text": "The MBSR group demonstrated a significant reduction in pain scores compared to the control group (mean difference -1.4 points; 95% CI, -1.9 to -0.9; P < 0.001).",
+      "predictedClass": "RESULTS",
+      "confidence": 0.8646373748779297,
+      "alternative": {
+        "predictedClass": "METHODS",
+        "confidence": 0.03808224946260452
+      },
+      "rawScores": [
+        0.028153561055660248,
+        0.037246301770210266,
+        0.03808224946260452,
+        0.03188057616353035,
+        0.8646373748779297
+      ]
+    },
+    {
+      "text": "No serious adverse events associated with the intervention were reported during the trial period.",
+      "predictedClass": "RESULTS",
+      "confidence": 0.8739274144172668,
+      "alternative": {
+        "predictedClass": "CONCLUSIONS",
+        "confidence": 0.038773857057094574
+      },
+      "rawScores": [
+        0.02140018530189991,
+        0.038773857057094574,
+        0.03660152852535248,
+        0.02929692715406418,
+        0.8739274144172668
+      ]
+    },
+    {
+      "text": "An 8-week MBSR program provides clinically meaningful, sustained improvement in pain and functional limitations for patients with chronic low back pain.",
+      "predictedClass": "CONCLUSIONS",
+      "confidence": 0.8548111319541931,
+      "alternative": {
+        "predictedClass": "METHODS",
+        "confidence": 0.04126443713903427
+      },
+      "rawScores": [
+        0.036142196506261826,
+        0.8548111319541931,
+        0.04126443713903427,
+        0.030422033742070198,
+        0.037360113114118576
+      ]
+    }
+  ],
+  "rawOutput": "[[0.6914839  0.10128433 0.03672331 0.11462412 0.05588433]\n [0.26813048 0.0312466  0.02932563 0.6512438  0.02005342]\n [0.03787797 0.07010589 0.8127331  0.0368072  0.0424759 ]\n [0.02905528 0.06568907 0.82583547 0.03681573 0.04260448]\n [0.02978782 0.03847008 0.8740441  0.03722218 0.02047572]\n [0.02556153 0.06460945 0.19731244 0.03465819 0.6778584 ]\n [0.02815356 0.0372463  0.03808225 0.03188058 0.8646374 ]\n [0.02140019 0.03877386 0.03660153 0.02929693 0.8739274 ]\n [0.0361422  0.85481113 0.04126444 0.03042203 0.03736011]]"
+}
+```
+
+</div>
+
+<img src="static/docImages/raw_otpt.png" alt="Custom CNN training metrics" style="padding-left: 33%; width: 50%;">  
+<br>
+
 - Readable grouping of adjacent sentences with the same predicted class
-- Sample medical abstracts covering oncology, cardiology, and neurology
-- Light and dark themes with the selected theme saved in browser storage
-- Responsive static frontend with no frontend build step
+- Sample medical abstracts covering Orthopedics, Endocrinology, Pulmonology, and also an OOD (Out Of Domain) example of Robotics, to give a very rough idea of how the model performs on abstracts of similar structure to an RCT (Randomized Controlled Trial) but not neccessarily from a medical research paper.
+
 - Docker Compose setup for running the complete application locally
+
 - Separate API and inference services so the model runtime is isolated from the Java backend
 
 ---
@@ -39,11 +204,7 @@ A scientific abstract usually follows a recognizable rhetorical structure. For e
 Structura treats each sentence as an individual classification unit. Given an abstract such as:
 
 ```text
-Heart failure with preserved ejection fraction is a growing public health concern.
-This study evaluated whether a new treatment reduced hospitalization.
-We analyzed data from 15,000 patients across four clinical trials.
-The treatment reduced hospitalization by 22 percent.
-These results support its use as a foundational therapy.
+Chronic low back pain remains a major cause of disability worldwide, with limited long-term efficacy from standard physical therapies. We aimed to evaluate whether an 8-week mindfulness-based stress reduction (MBSR) program reduces pain intensity compared to usual care. A randomized, parallel-group trial was conducted with 240 adults aged 18 to 65 years diagnosed with persistent non-specific low back pain. Participants were randomly assigned 1:1 to either the MBSR group or a waitlist control receiving standard medical care. The primary outcome was the change in back pain intensity measured on a 10-point visual analog scale at 24 weeks. A total of 218 participants completed the final 24-week follow-up assessment. The MBSR group demonstrated a significant reduction in pain scores compared to the control group (mean difference -1.4 points; 95% CI, -1.9 to -0.9; P < 0.001). No serious adverse events associated with the intervention were reported during the trial period. An 8-week MBSR program provides clinically meaningful, sustained improvement in pain and functional limitations for patients with chronic low back pain.
 ```
 
 the model can return a prediction for each sentence:
@@ -122,7 +283,7 @@ The browser should normally communicate with the Spring backend, not directly wi
 
 ## Frontend
 
-The frontend lives in [frontend/index.html](frontend/index.html), [frontend/script.js](frontend/script.js), and [frontend/styles.css](frontend/styles.css). It is intentionally lightweight: there is no React application, package manager, bundler, or frontend compilation step.
+The frontend lives in [frontend/index.html](frontend/index.html), [frontend/script.js](frontend/script.js), and [frontend/styles.css](frontend/styles.css). It is intentionally lightweight: there is no framework application, package manager, bundler, or frontend compilation step.
 
 ### Interface behavior
 
@@ -195,8 +356,6 @@ The backend is a Spring Boot application running on Java 21. Its main responsibi
 - Maven Wrapper
 - Virtual threads enabled through application configuration
 
-The project also contains JPA, H2, and Actuator dependencies, but the current implementation does not define persistence entities, repositories, or database-backed application features.
-
 ### Configuration
 
 The backend binds to all interfaces on port `8080`:
@@ -250,7 +409,7 @@ The reconstructed model has four input branches.
 
 The semantic branch uses Keras Hub's `all_minilm_l6_v2_en` BERT backbone through a `BertTextEmbedder`.
 
-The visible configuration includes:
+The configuration includes:
 
 - BERT tokenizer vocabulary extracted from the Keras archive
 - Lowercase tokenization

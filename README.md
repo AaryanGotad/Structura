@@ -381,7 +381,7 @@ The backend allows cross-origin requests for `/api/**` from any origin and allow
 
 ## Machine Learning Model
 
-This section describes what can be established from the inference code. Training details that are not present in the repository are intentionally marked for completion.
+Structura is a five-class sentence classifier for scientific abstracts. The deployed model combines semantic, character-level, and positional features. The training history below records the experiments used to select the production architecture, while the implementation details describe the model reconstructed by the inference service.
 
 ### Model purpose
 
@@ -492,68 +492,97 @@ The extracted files are written under `ml_service/model_extract/`. The model is 
 
 ---
 
-## Model Documentation To Complete
+## Training and Evaluation
 
-The repository contains the deployed architecture and inference assets, but not the experiment notebook or training pipeline. The following sections are intentionally ready for the model author to complete.
+### Dataset
 
-### Dataset and data source
+Training used the PubMed 20k RCT dataset from the official [pubmed-rct repository](https://github.com/Franck-Dernoncourt/pubmed-rct). The experiments used the prepared PubMed 20k split with numbers replaced by `@` and the provided training, validation, and test partitions. Each sentence is labeled according to its rhetorical role in the abstract:
 
-> **To complete:** Describe the dataset name, source URL, license, domain, collection process, number of abstracts, number of sentences, and any filtering or deduplication.
+- `BACKGROUND`
+- `OBJECTIVE`
+- `METHODS`
+- `RESULTS`
+- `CONCLUSIONS`
 
-### Label definitions
+The partitions contain 180,040 training sentences, 30,212 validation sentences, and 30,135 test sentences. The training distribution was:
 
-> **To complete:** Explain the annotation scheme for `BACKGROUND`, `OBJECTIVE`, `METHODS`, `RESULTS`, and `CONCLUSIONS`. Include examples of ambiguous sentences and how multi-role sentences were labeled.
+| Class | Training sentences |
+|---|---:|
+| `METHODS` | 59,353 |
+| `RESULTS` | 57,953 |
+| `CONCLUSIONS` | 27,168 |
+| `BACKGROUND` | 21,727 |
+| `OBJECTIVE` | 13,839 |
 
-### Train, validation, and test splits
+`OBJECTIVE` is the least represented class and was frequently confused with `BACKGROUND`.
 
-> **To complete:** Add the number of abstracts and sentences in each split. Explain whether the split was performed by sentence, abstract, paper, author, or source dataset. Document the random seed if one was used.
+### Experimental protocol
 
-### Training procedure
+The initial architecture experiments were performed on 10% of the training data to keep iteration times manageable. The experiments were used for architecture selection rather than as directly comparable full-data benchmarks. Validation was performed on the complete validation split where noted in the original experiments. The early models were developed with Keras 2; the production model was later rebuilt for Keras 3 and memory-constrained inference.
 
-> **To complete:** Add the loss function, optimizer, learning rate, batch size, number of epochs, callbacks, early stopping behavior, class weighting, augmentation, and hardware used.
+The documented token experiment used batches of 32 with TensorFlow datasets and prefetching. The final training notes do not record random seeds, exact hardware, class weighting, or augmentation, so those details should not be inferred from the results below.
 
-### Trainable components
+### Architecture experiments
 
-> **To complete:** Explain which branches were frozen or fine-tuned during training. State whether the MiniLM backbone was trained, partially unfrozen, or used only as a fixed feature extractor.
+| Experiment | Main architecture | Validation accuracy | Validation F1 |
+|---|---|---:|---:|
+| Baseline | TF-IDF plus Multinomial Naive Bayes | 72.18% | 69.89% |
+| Token model | TextVectorization, token embedding, Conv1D, global average pooling | 78.71% | 78.47% |
+| Pretrained feature extractor | Universal Sentence Encoder plus dense classifier | 71.52% | 71.23% |
+| Character model | Character embedding, Conv1D, global max pooling | 64.82% | 63.67% |
+| Hybrid model | Universal Sentence Encoder plus character BiLSTM | 73.48% | 73.11% |
+| Tribrid model | Token and character features plus sentence-position features | 83.28% | 83.20% |
 
-### Evaluation results
+The tribrid model combined token semantics, character patterns, the sentence's position, and the abstract's total sentence count. Its initial held-out test evaluation achieved 82.57% accuracy, 82.43% precision, 82.57% recall, and 82.47% F1. These results motivated the later MiniLM-based redesign for deployment.
 
-> **To complete:** Add accuracy, precision, recall, F1 score, macro and weighted averages, validation results, test results, and any confidence intervals.
+### MiniLM model evolution
 
-| Metric | Validation | Test |
-|---|---:|---:|
-| Accuracy | TODO | TODO |
-| Macro precision | TODO | TODO |
-| Macro recall | TODO | TODO |
-| Macro F1 | TODO | TODO |
+The deployed model uses Keras Hub's `all_minilm_l6_v2_en` backbone. It was selected because it provided stronger semantic representations with a much smaller serving footprint than the earlier Universal Sentence Encoder/SavedModel approach.
 
-### Per-class performance
+| Experiment | Change | Validation result |
+|---|---|---:|
+| MiniLM 1 | Frozen MiniLM with character BiLSTM and positional branches; 10% training data | 83.62% accuracy, 0.9314 loss |
+| MiniLM 2 | Same architecture trained on the full training split for five epochs | 86.47% accuracy, 0.8849 loss |
+| MiniLM 3 | Added early stopping and learning-rate reduction | 86.40% accuracy, 0.8933 loss |
+| MiniLM 4 | Fine-tuned the MiniLM backbone | 89.45% accuracy, 0.8415 loss |
+| MiniLM 5 | Replaced the character BiLSTM with Conv1D | 89.15% accuracy after fine-tuning |
+| MiniLM 6 | Final full-data model with MiniLM and character BiLSTM | 89.04% test accuracy |
 
-> **To complete:** Add a table showing how well the model performs for each structural class and identify the most common class confusions.
+The Conv1D character branch was retained as an ablation. The final production model uses the character BiLSTM because it performed better in the reported experiments.
 
-| Class | Precision | Recall | F1 score | Support |
-|---|---:|---:|---:|---:|
-| `BACKGROUND` | TODO | TODO | TODO | TODO |
-| `OBJECTIVE` | TODO | TODO | TODO | TODO |
-| `METHODS` | TODO | TODO | TODO | TODO |
-| `RESULTS` | TODO | TODO | TODO | TODO |
-| `CONCLUSIONS` | TODO | TODO | TODO | TODO |
+### Final training configuration
 
-### Confusion matrix
+The final model uses categorical cross-entropy with label smoothing of `0.2`, an Adam optimizer, and a `0.5` dropout layer in the classification head. The fine-tuning configuration used Adam with a learning rate of `1e-3` and gradient `clipnorm=1.0`.
 
-> **To complete:** Add a confusion matrix image and explain the strongest and weakest class boundaries. Pay particular attention to sentences that combine multiple rhetorical roles.
+The callback configuration was:
 
-### Confidence interpretation
+- `EarlyStopping` monitoring `val_accuracy`, with patience `3` and `restore_best_weights=True`
+- `ReduceLROnPlateau` monitoring `val_loss`, with factor `0.5`, patience `2`, and minimum learning rate `1e-6`
 
-> **To complete:** Explain whether the returned softmax values were calibrated, whether a confidence threshold was evaluated, and what users should infer from a low-confidence prediction. A softmax score is not automatically a guarantee of correctness.
+The exact number of epochs varied by experiment because early stopping was enabled for the fine-tuning runs. The final reported result was evaluated on the test split, which was not used during model selection:
 
-### Reproducibility
+| Metric | Final test result |
+|---|---:|
+| Accuracy | 89.04% |
+| Precision | 88.91% |
+| Recall | 89.04% |
+| F1 score | 88.92% |
 
-> **To complete:** Add the training code or notebook location, dependency versions, random seeds, preprocessing version, model checksum, and the exact command used to export the deployed model archive.
+These are the metrics reported in the training notes. Their averaging method is not specified, so they are not labeled as macro or weighted scores.
 
-### Out-of-domain behavior
+### Deployment considerations
 
-> **To complete:** Describe how the model behaves on non-scientific text, abstracts outside the training domain, short inputs, unusually long inputs, and sentences containing multiple structural roles.
+The earlier Keras 2 SavedModel approach created a large model and could consume several gigabytes of memory during loading. That was unsuitable for the intended low-memory deployment environment. The MiniLM redesign reduced the model assets to approximately 80 MB before the final archive and enabled a Keras 3-compatible reconstruction from the stored vocabularies and `model.weights.h5` weights.
+
+The production loader extracts the tokenizer vocabulary, character vocabulary, and weights from the `.keras` archive, reconstructs the architecture, freezes the MiniLM embedder for inference, and restores the trained weights. Inference is configured for CPU use. The loader currently passes `skip_mismatch=True` to `load_weights`; this keeps startup from failing on a mismatch but can conceal incomplete weight restoration and should be audited when changing the architecture.
+
+### Known limitations and reporting gaps
+
+- Position features use fixed one-hot depths of `15` for the zero-based sentence position and `20` for the encoded total-line value. Very long abstracts can exceed these ranges.
+- The model is most likely to confuse `OBJECTIVE` and `BACKGROUND`, partly reflecting the training imbalance.
+- Per-class precision, recall, F1, support counts, and a confusion matrix were not recorded in the supplied training notes.
+- Confidence calibration, confidence thresholds, random seeds, exact hardware, and confidence intervals were not reported. Returned softmax values should therefore be treated as model scores, not guaranteed probabilities.
+- Behavior on non-scientific text, out-of-domain abstracts, and sentences containing multiple rhetorical roles was not systematically evaluated.
 
 ---
 

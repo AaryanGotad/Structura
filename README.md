@@ -671,11 +671,20 @@ The response is passed through from the ML service and has this shape:
       "rawScores": [0.91, 0.01, 0.01, 0.06, 0.01]
     }
   ],
-  "rawOutput": "[[...]]"
+  "rawOutput": "[[...]]",
+  "isLikelyOOD": false
 }
 ```
 
 `rawOutput` is currently a string representation of the model probability array. It is preserved in the response for inspection, while `data` contains the structured objects used by the frontend.
+
+`isLikelyOOD` is `true` when any of the following backend checks indicates that the input is likely outside the model's supported domain:
+
+- Mean primary sentence confidence is below `0.45`.
+- The adjacent predicted-class change rate is at least `0.67`.
+- The parsed sentence count is fewer than `3` or greater than `30`.
+
+The sentence count uses the same sentence-level results produced by the FastAPI service. The frontend can use this boolean to choose the appropriate user-facing message.
 
 #### Request validation
 

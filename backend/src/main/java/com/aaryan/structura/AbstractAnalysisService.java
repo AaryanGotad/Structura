@@ -9,6 +9,7 @@ import org.springframework.web.client.RestClient;
 import com.aaryan.structura.dto.AltPredDTO;
 import com.aaryan.structura.dto.AnalyzeRequestDTO;
 import com.aaryan.structura.dto.AnalyzeResponseDTO;
+import com.aaryan.structura.dto.MlAnalyzeResponseDTO;
 import com.aaryan.structura.dto.SentPredDTO;
 
 import tools.jackson.core.JacksonException;
@@ -34,24 +35,36 @@ public class AbstractAnalysisService {
 
     private final RestClient restClient;
     private final String mlServiceUrl;
+    private final OodClassifier oodClassifier;
 
     public AbstractAnalysisService(
             RestClient restClient,
             @Value("${structura.ml-service-url}") String mlServiceUrl) {
-        // this.prettyJsonWriter = objectMapper.writerWithDefaultPrettyPrinter();
         this.restClient = restClient;
         this.mlServiceUrl = mlServiceUrl;
+        this.oodClassifier = new OodClassifier();
     }
 
     public AnalyzeResponseDTO analyze(String text) {
         AnalyzeRequestDTO payload = new AnalyzeRequestDTO(text);
 
-        return restClient.post()
+        MlAnalyzeResponseDTO response = restClient.post()
                 .uri(mlServiceUrl)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(payload)
                 .retrieve()
-                .body(new ParameterizedTypeReference<AnalyzeResponseDTO>() {});
+            .body(new ParameterizedTypeReference<MlAnalyzeResponseDTO>() {});
+
+        if (response == null) {
+            return null;
+        }
+
+        return new AnalyzeResponseDTO(
+            response.success(),
+            response.data(),
+            response.rawOutput(),
+            oodClassifier.isLikelyOOD(response.data())
+        );
     }
 
     //     List<String> sentences = splitSentences(text);

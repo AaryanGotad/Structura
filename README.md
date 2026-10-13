@@ -1,6 +1,6 @@
-# Structura
+![structura cover image](static/docImages/ructura_cover.png)
 
-## Scientific Abstract Structure Analysis
+# Structura - Scientific Abstract Structure Analysis
 
 Structura is a full-stack machine learning application that analyzes scientific abstracts sentence by sentence. It assigns each sentence a structural role, such as `BACKGROUND`, `OBJECTIVE`, `METHODS`, `RESULTS`, or `CONCLUSIONS`, and presents the predictions as a readable structured abstract.
 
@@ -11,6 +11,13 @@ The project is built as three cooperating services:
 - A FastAPI and TensorFlow service that preprocesses text and runs the model inference
 
 The goal is not to generate or rewrite a scientific abstract. Structura identifies the likely role of each sentence in an existing abstract so that the organization of the research is easier to scan.
+
+---
+
+# Live Streamlit Demo
+Since, deploying the complete project with all of its components is not possible for me (as of 2026) on free tiers on hosting services, specifically the ML service layer. So, what I *did* instead was made a Streamlit application, with similar UI and functionalities as this Full-Stack implementation, and hosted it on Streamlit Community Cloud (for free!), for anyone not wanting to setup this whole thing locally, to explore it, on the fly!
+
+[Check it out](https://structura-app-impl-ltkaydtkesgwkrhmanxwyf.streamlit.app/)!
 
 ---
 
@@ -248,10 +255,14 @@ flowchart TD
     M --> P[Sentence and feature preprocessing]
     P --> I[TensorFlow model inference]
     I --> R[Prediction formatting]
-    R -->|JSON response| S
-    S -->|JSON response| C
+    R -->|Raw predictions JSON| S
+    S --> O[OOD Evaluation:\nset 'isLikelyOOD' flag]
+    O -->|Enriched JSON response| C
     C -->|JSON response| F
-    F --> V[Structured abstract and score views]
+    F --> D{isLikelyOOD?}
+    D -->|true| B[Inject OOD banner]
+    D -->|false / default| V[Render structured abstract & score views]
+    B --> V
 ```
 
 ### Why there are two backend services
@@ -268,6 +279,56 @@ http://ml-service:8000/analyze
 
 The browser should normally communicate with the Spring backend, not directly with the ML service.
 
+Now, many of you may think that the SpringBoot layer is basically just a pass through layer, doing nothing except validating whether an actual text content is being passed, one can very easily do the exact same thing in FastAPI using PyDantic models or even just raw FastAPI if they want, then what's the point?
+
+And you are right, there is no major benifit having that SpringBoot layer **currently**.
+
+You see most large scale enterprise softwares *still* use springboot as their main backend with no plans to migrate away from it due to its unmatched efficiency, robust ecosystem, and proven capacity to handle massive, high-throughput applications, this includes **Enterprise Banking**, **Financial Services**, and **Insurance (BFSI)** along with **Large-Scale E-commerce / Retail Tech**.
+Rather than rewriting their core infrastructure in Python to adopt AI/ML features, these industries universally prefer a polyglot microservices architecture.
+
+And that is what I have begun learning through Structura.
+
+This **de-coupled** architecture gives me immense flexibility. If I ever upgrade my model, I would just have to edit the ML service layer accordingly, without ever needing the touch the backend or presentation layer.
+If I ever decide to add a persistence layer as well using a DB, having user auth and history, i would just have to deal with the SpringBoot code, without needing to worry about making the ML part of the app to be compatible. Or say if i upgrade my frontend to a larger framework like React, i won't even bother looking at the backend and ml service code, they would just work as intended (obviously given i correctly manage to connect to the springboot backend correctly).
+
+```mermaid
+flowchart TD
+    %% Presentation Layer
+    subgraph Client ["Presentation Layer"]
+        UI[Browser UI]
+        FutureUI[Future: React/Next.js] -. "Upgrades independently" .-> UI
+    end
+
+    %% Core Backend Layer (Spring Boot)
+    subgraph Spring ["Core Backend (Spring Boot)"]
+        API[Public Route: /api/analyze]
+        Val[Request Validation & Routing]
+        FutureDB[(Future: DB & Auth)] -. "Adds persistence natively" .-> API
+        API --> Val
+    end
+
+    %% ML Service Layer (FastAPI)
+    subgraph ML ["AI/ML Service (FastAPI)"]
+        Endpoint[Internal Route: /analyze]
+        Runtime[Python ML Runtime<br/>TensorFlow & spaCy]
+        Assets[(Model Assets & Weights)]
+        FutureModel[(Future: Upgraded Model)] -. "Swaps without Java changes" .-> Assets
+        
+        Endpoint --> Runtime
+        Assets --> Runtime
+    end
+
+    %% Communication Bridges
+    UI == "External HTTP POST" ==> API
+    Val == "Spring RestClient<br/>(Internal Docker Network)" ==> Endpoint
+
+    %% Styling for future/flexible components
+    classDef future fill:transparent,stroke:#888,stroke-dasharray: 5 5,color:#888;
+    class FutureUI,FutureDB,FutureModel future;
+```
+
+I hope you are slowly starting to get the idea of how much potential a de-coupled architecture holds.
+
 ### Request lifecycle
 
 1. The frontend trims the textarea value and sends `{ "text": "..." }` as JSON.
@@ -276,12 +337,15 @@ The browser should normally communicate with the Spring backend, not directly wi
 4. FastAPI passes the text through `preprocess_text`.
 5. The model receives semantic, character-level, and positional features for every sentence.
 6. The ML service formats the probability vectors into primary and alternative predictions.
-7. The response travels back through Spring to the browser.
-8. JavaScript groups adjacent predictions and builds the result interface.
+7. The response travels back to Spring which performs heuristic-driven OOD preprocessing.
+8. The response along with preprocessing result travels back to the frontend in JSON format.
+9. JavaScript groups adjacent predictions and builds the appropriate result interface based on the OOD preprocessing result.
 
 ---
 
 ## Frontend
+
+![frontend cover image](static/docImages/frontend_cover.png)
 
 The frontend lives in [frontend/index.html](frontend/index.html), [frontend/script.js](frontend/script.js), and [frontend/styles.css](frontend/styles.css). It is intentionally lightweight: there is no framework application, package manager, bundler, or frontend compilation step.
 
@@ -299,6 +363,9 @@ The page provides:
 - A raw score table
 - A light/dark theme toggle
 - An educational limitations section
+
+<img src="static/docImages/frontend_interface.png" alt="Primary & Alternate prediction UI" style="padding-left: 30%; width: 50%;">  
+<br>
 
 ### Rendering predictions
 
@@ -319,6 +386,9 @@ BACKGROUND, CONCLUSIONS, METHODS, OBJECTIVE, RESULTS
 ```
 
 The model service returns confidence values as fractions between `0` and `1`. The frontend formats them as percentages for display. The raw score table shows values to six decimal places.
+
+<img src="static/docImages/prim_alt_pred.png" alt="Primary & Alternate prediction UI" style="padding-left: 30%; width: 50%;">  
+<br>
 
 ### API URL selection
 
@@ -343,6 +413,8 @@ Any value other than `light` defaults to the dark theme on the next page load.
 ---
 
 ## Spring Boot Backend
+
+![spring boot backend cover image](static/docImages/spring_back_cover.png)
 
 The backend is a Spring Boot application running on Java 21. Its main responsibility is request coordination rather than model inference.
 
@@ -379,9 +451,39 @@ The backend allows cross-origin requests for `/api/**` from any origin and allow
 
 ---
 
-## Machine Learning Model
+## Deep Learning Model
+
+![ml model cover image](static/docImages/ml_model_cover_image.png)
+
+All models were built with TensorFlow/Keras. <img src="static/docImages/Tensorflow_logo.svg.png" alt="TensorFlow logo" style="width: 2%;">
 
 Structura is a five-class sentence classifier for scientific abstracts. The deployed model combines semantic, character-level, and positional features. The training history below records the experiments used to select the production architecture, while the implementation details describe the model reconstructed by the inference service.
+
+### Dataset
+
+![PubMed 20k dataset cover](static/docImages/pubmed_cover.png)
+
+The source of the dataset and my training goals come from this [**Research Paper**](https://www.google.com/url?q=https%3A%2F%2Farxiv.org%2Fabs%2F1710.06071)
+
+Training used the PubMed 20k RCT dataset from the official [pubmed-rct repository](https://github.com/Franck-Dernoncourt/pubmed-rct). All experiments used the prepared PubMed 20k split with numbers replaced by `@` and the provided training, validation, and test partitions. Each sentence is labeled according to its rhetorical role in the abstract:
+
+- `BACKGROUND`
+- `OBJECTIVE`
+- `METHODS`
+- `RESULTS`
+- `CONCLUSIONS`
+
+The partitions contain **180,040** training sentences, **30,212** validation sentences, and **30,135** test sentences. The training distribution was:
+
+| Class | Training sentences |
+|---|---:|
+| `METHODS` | 59,353 |
+| `RESULTS` | 57,953 |
+| `CONCLUSIONS` | 27,168 |
+| `BACKGROUND` | 21,727 |
+| `OBJECTIVE` | 13,839 |
+
+`OBJECTIVE` is the least represented class and was frequently confused with `BACKGROUND`.
 
 ### Model purpose
 
@@ -401,9 +503,42 @@ The order of this file is significant because the model's output indices are con
 
 ### Implemented architecture
 
+This research paper is the source of where my final model architecutre is inspired from:
+> [Neural Networks for Joint Sentence Classification in Medical Paper Abstracts by Dernoncourt, 2017](https://www.google.com/url?q=https%3A%2F%2Farxiv.org%2Fpdf%2F1612.05251.pdf)
+
 The inference service reconstructs the model in `load_structura_model()` rather than loading a complete executable model object directly. It extracts the vocabulary assets and weight file from `model/structura.keras`, rebuilds the layers, and then restores the trained weights.
 
-The reconstructed model has four input branches.
+This is a "multi-modal" architecture because the model has four input branches.
+```mermaid
+flowchart TD
+    %% Character Branch
+    char_inputs["char_inputs (InputLayer)"] --> text_vectorization["character vectorizer\n(TextVectorization)"]
+    text_vectorization --> embedding["character embedder\n(Embedding)"]
+    embedding --> bidirectional["bidrectional\n(Bidirectional LSTM)"]
+    
+    %% Token Branch (MiniLM)
+    token_inputs["token inputs\n(InputLayer)"] --> token_embedder["token embedder\n(BertTextEmbedder with MiniLM backbone)"]
+    token_embedder --> dense["Dense"]
+    
+    %% Text & Character Hybrid Concatenation
+    dense --> token_char_hybrid_embedding["token_char_hybrid_embedding\n(Concatenate)"]
+    bidirectional --> token_char_hybrid_embedding
+    
+    %% Intermediate Dense and Dropout
+    token_char_hybrid_embedding --> dense_3["dense_3\n(Dense)"]
+    dense_3 --> dropout["dropout\n(Dropout)"]
+    
+    %% Positional Feature Branches
+    line_number_input["line_number_input\n(InputLayer)"] --> dense_1["dense_1\n(Dense)"]
+    total_lines_input["total_lines_input\n(InputLayer)"] --> dense_2["dense_2\n(Dense)"]
+    
+    %% Final Positional Concatenation & Output
+    dense_1 --> token_char_positional_embedding["token_char_positional_embedding\n(Concatenate)"]
+    dense_2 --> token_char_positional_embedding
+    dropout --> token_char_positional_embedding
+    
+    token_char_positional_embedding --> output_layer["output_layer\n(Dense)"]
+```
 
 #### 1. Semantic text branch
 

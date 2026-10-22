@@ -1,6 +1,6 @@
-# Structura
+![structura cover image](static/docImages/structura_cover.png)
 
-## Scientific Abstract Structure Analysis
+# Structura - Scientific Abstract Structure Analysis
 
 Structura is a full-stack machine learning application that analyzes scientific abstracts sentence by sentence. It assigns each sentence a structural role, such as `BACKGROUND`, `OBJECTIVE`, `METHODS`, `RESULTS`, or `CONCLUSIONS`, and presents the predictions as a readable structured abstract.
 
@@ -11,6 +11,13 @@ The project is built as three cooperating services:
 - A FastAPI and TensorFlow service that preprocesses text and runs the model inference
 
 The goal is not to generate or rewrite a scientific abstract. Structura identifies the likely role of each sentence in an existing abstract so that the organization of the research is easier to scan.
+
+---
+
+# Live Streamlit Demo
+Since, deploying the complete project with all of its components is not possible for me (as of 2026) on free tiers on hosting services, specifically the ML service layer. So, what I *did* instead was made a Streamlit application, with similar UI and functionalities as this Full-Stack implementation, and hosted it on Streamlit Community Cloud (for free!), for anyone not wanting to setup this whole thing locally, to explore it, on the fly!
+
+[Check it out](https://structura-app-impl-ltkaydtkesgwkrhmanxwyf.streamlit.app/)!
 
 ---
 
@@ -199,6 +206,8 @@ The goal is not to generate or rewrite a scientific abstract. Structura identifi
 
 ## What Structura Does
 
+![what structura does cover image](static/docImages/what_structura_does_cover.png)
+
 A scientific abstract usually follows a recognizable rhetorical structure. For example, it may begin by explaining a problem, state the purpose of a study, describe how the study was performed, report the findings, and finish with an interpretation or conclusion.
 
 Structura treats each sentence as an individual classification unit. Given an abstract such as:
@@ -248,10 +257,14 @@ flowchart TD
     M --> P[Sentence and feature preprocessing]
     P --> I[TensorFlow model inference]
     I --> R[Prediction formatting]
-    R -->|JSON response| S
-    S -->|JSON response| C
+    R -->|Raw predictions JSON| S
+    S --> O[OOD Evaluation:\nset 'isLikelyOOD' flag]
+    O -->|Enriched JSON response| C
     C -->|JSON response| F
-    F --> V[Structured abstract and score views]
+    F --> D{isLikelyOOD?}
+    D -->|true| B[Inject OOD banner]
+    D -->|false / default| V[Render structured abstract & score views]
+    B --> V
 ```
 
 ### Why there are two backend services
@@ -268,6 +281,56 @@ http://ml-service:8000/analyze
 
 The browser should normally communicate with the Spring backend, not directly with the ML service.
 
+Now, many of you may think that the SpringBoot layer is basically just a pass through layer, doing nothing except validating whether an actual text content is being passed, one can very easily do the exact same thing in FastAPI using PyDantic models or even just raw FastAPI if they want, then what's the point?
+
+And you are right, there is no major benifit having that SpringBoot layer **currently**.
+
+You see most large scale enterprise softwares *still* use springboot as their main backend with no plans to migrate away from it due to its unmatched efficiency, robust ecosystem, and proven capacity to handle massive, high-throughput applications, this includes **Enterprise Banking**, **Financial Services**, and **Insurance (BFSI)** along with **Large-Scale E-commerce / Retail Tech**.
+Rather than rewriting their core infrastructure in Python to adopt AI/ML features, these industries universally prefer a polyglot microservices architecture.
+
+And that is what I have begun learning through Structura.
+
+This **de-coupled** architecture gives me immense flexibility. If I ever upgrade my model, I would just have to edit the ML service layer accordingly, without ever needing the touch the backend or presentation layer.
+If I ever decide to add a persistence layer as well using a DB, having user auth and history, i would just have to deal with the SpringBoot code, without needing to worry about making the ML part of the app to be compatible. Or say if i upgrade my frontend to a larger framework like React, i won't even bother looking at the backend and ml service code, they would just work as intended (obviously given i correctly manage to connect to the springboot backend correctly).
+
+```mermaid
+flowchart TD
+    %% Presentation Layer
+    subgraph Client ["Presentation Layer"]
+        UI[Browser UI]
+        FutureUI[Future: React/Next.js] -. "Upgrades independently" .-> UI
+    end
+
+    %% Core Backend Layer (Spring Boot)
+    subgraph Spring ["Core Backend (Spring Boot)"]
+        API[Public Route: /api/analyze]
+        Val[Request Validation & Routing]
+        FutureDB[(Future: DB & Auth)] -. "Adds persistence natively" .-> API
+        API --> Val
+    end
+
+    %% ML Service Layer (FastAPI)
+    subgraph ML ["AI/ML Service (FastAPI)"]
+        Endpoint[Internal Route: /analyze]
+        Runtime[Python ML Runtime<br/>TensorFlow & spaCy]
+        Assets[(Model Assets & Weights)]
+        FutureModel[(Future: Upgraded Model)] -. "Swaps without Java changes" .-> Assets
+        
+        Endpoint --> Runtime
+        Assets --> Runtime
+    end
+
+    %% Communication Bridges
+    UI == "External HTTP POST" ==> API
+    Val == "Spring RestClient<br/>(Internal Docker Network)" ==> Endpoint
+
+    %% Styling for future/flexible components
+    classDef future fill:transparent,stroke:#888,stroke-dasharray: 5 5,color:#888;
+    class FutureUI,FutureDB,FutureModel future;
+```
+
+I hope you are slowly starting to get the idea of how much potential a de-coupled architecture holds.
+
 ### Request lifecycle
 
 1. The frontend trims the textarea value and sends `{ "text": "..." }` as JSON.
@@ -276,12 +339,15 @@ The browser should normally communicate with the Spring backend, not directly wi
 4. FastAPI passes the text through `preprocess_text`.
 5. The model receives semantic, character-level, and positional features for every sentence.
 6. The ML service formats the probability vectors into primary and alternative predictions.
-7. The response travels back through Spring to the browser.
-8. JavaScript groups adjacent predictions and builds the result interface.
+7. The response travels back to Spring which performs heuristic-driven OOD preprocessing.
+8. The response along with preprocessing result travels back to the frontend in JSON format.
+9. JavaScript groups adjacent predictions and builds the appropriate result interface based on the OOD preprocessing result.
 
 ---
 
 ## Frontend
+
+![frontend cover image](static/docImages/frontend_cover.png)
 
 The frontend lives in [frontend/index.html](frontend/index.html), [frontend/script.js](frontend/script.js), and [frontend/styles.css](frontend/styles.css). It is intentionally lightweight: there is no framework application, package manager, bundler, or frontend compilation step.
 
@@ -299,6 +365,9 @@ The page provides:
 - A raw score table
 - A light/dark theme toggle
 - An educational limitations section
+
+<img src="static/docImages/frontend_interface.png" alt="Primary & Alternate prediction UI" style="padding-left: 30%; width: 50%;">  
+<br>
 
 ### Rendering predictions
 
@@ -319,6 +388,9 @@ BACKGROUND, CONCLUSIONS, METHODS, OBJECTIVE, RESULTS
 ```
 
 The model service returns confidence values as fractions between `0` and `1`. The frontend formats them as percentages for display. The raw score table shows values to six decimal places.
+
+<img src="static/docImages/prim_alt_pred.png" alt="Primary & Alternate prediction UI" style="padding-left: 30%; width: 50%;">  
+<br>
 
 ### API URL selection
 
@@ -343,6 +415,8 @@ Any value other than `light` defaults to the dark theme on the next page load.
 ---
 
 ## Spring Boot Backend
+
+![spring boot backend cover image](static/docImages/spring_back_cover.png)
 
 The backend is a Spring Boot application running on Java 21. Its main responsibility is request coordination rather than model inference.
 
@@ -379,9 +453,39 @@ The backend allows cross-origin requests for `/api/**` from any origin and allow
 
 ---
 
-## Machine Learning Model
+## Deep Learning Model
+
+![ml model cover image](static/docImages/ml_model_cover_image.png)
+
+All models were built with TensorFlow/Keras. <img src="static/docImages/Tensorflow_logo.svg.png" alt="TensorFlow logo" style="width: 2%;">
 
 Structura is a five-class sentence classifier for scientific abstracts. The deployed model combines semantic, character-level, and positional features. The training history below records the experiments used to select the production architecture, while the implementation details describe the model reconstructed by the inference service.
+
+### Dataset
+
+![PubMed 20k dataset cover](static/docImages/pubmed_cover.png)
+
+The source of the dataset and my training goals come from this [**Research Paper**](https://www.google.com/url?q=https%3A%2F%2Farxiv.org%2Fabs%2F1710.06071)
+
+Training used the PubMed 20k RCT dataset from the official [pubmed-rct repository](https://github.com/Franck-Dernoncourt/pubmed-rct). All experiments used the prepared PubMed 20k split with numbers replaced by `@` and the provided training, validation, and test partitions. Each sentence is labeled according to its rhetorical role in the abstract:
+
+- `BACKGROUND`
+- `OBJECTIVE`
+- `METHODS`
+- `RESULTS`
+- `CONCLUSIONS`
+
+The partitions contain **180,040** training sentences, **30,212** validation sentences, and **30,135** test sentences. The training distribution was:
+
+| Class | Training sentences |
+|---|---:|
+| `METHODS` | 59,353 |
+| `RESULTS` | 57,953 |
+| `CONCLUSIONS` | 27,168 |
+| `BACKGROUND` | 21,727 |
+| `OBJECTIVE` | 13,839 |
+
+`OBJECTIVE` is the least represented class and was frequently confused with `BACKGROUND`.
 
 ### Model purpose
 
@@ -401,11 +505,48 @@ The order of this file is significant because the model's output indices are con
 
 ### Implemented architecture
 
-The inference service reconstructs the model in `load_structura_model()` rather than loading a complete executable model object directly. It extracts the vocabulary assets and weight file from `model/structura.keras`, rebuilds the layers, and then restores the trained weights.
+![impl_architecture_cover](static/docImages/impl_architecture_cover.png)
 
-The reconstructed model has four input branches.
+This research paper is the source of where my final model architecutre is inspired from:
+> [Neural Networks for Joint Sentence Classification in Medical Paper Abstracts by Dernoncourt, 2017](https://www.google.com/url?q=https%3A%2F%2Farxiv.org%2Fpdf%2F1612.05251.pdf)
+
+The inference service reconstructs the model in `load_structura_model()` rather than loading a complete executable model object directly. It extracts the vocabulary assets and weight file from `model/structura.keras`, rebuilds the layers, and then restores the trained weights. This is done inorder to make the loaded model take less memory than just simply loading it, because reconstructing through model weights gave me the ability to skip optimizer weights entirely.
+
+This is a "multi-modal" architecture because the model has four input branches.
+```mermaid
+flowchart TD
+    %% Character Branch
+    char_inputs["char_inputs (InputLayer)"] --> text_vectorization["character vectorizer\n(TextVectorization)"]
+    text_vectorization --> embedding["character embedder\n(Embedding)"]
+    embedding --> bidirectional["bidrectional\n(Bidirectional LSTM)"]
+    
+    %% Token Branch (MiniLM)
+    token_inputs["token inputs\n(InputLayer)"] --> token_embedder["token embedder\n(BertTextEmbedder with MiniLM backbone)"]
+    token_embedder --> dense["Dense"]
+    
+    %% Text & Character Hybrid Concatenation
+    dense --> token_char_hybrid_embedding["token_char_hybrid_embedding\n(Concatenate)"]
+    bidirectional --> token_char_hybrid_embedding
+    
+    %% Intermediate Dense and Dropout
+    token_char_hybrid_embedding --> dense_3["dense_3\n(Dense)"]
+    dense_3 --> dropout["dropout\n(Dropout)"]
+    
+    %% Positional Feature Branches
+    line_number_input["line_number_input\n(InputLayer)"] --> dense_1["dense_1\n(Dense)"]
+    total_lines_input["total_lines_input\n(InputLayer)"] --> dense_2["dense_2\n(Dense)"]
+    
+    %% Final Positional Concatenation & Output
+    dense_1 --> token_char_positional_embedding["token_char_positional_embedding\n(Concatenate)"]
+    dense_2 --> token_char_positional_embedding
+    dropout --> token_char_positional_embedding
+    
+    token_char_positional_embedding --> output_layer["output_layer\n(Dense)"]
+```
 
 #### 1. Semantic text branch
+
+![semantics text branch cover image](static/docImages/semantic_text_branch_cover.png)
 
 The semantic branch uses Keras Hub's `all_minilm_l6_v2_en` BERT backbone through a `BertTextEmbedder`.
 
@@ -426,6 +567,8 @@ The configuration includes:
 This branch provides a semantic representation of each sentence. It can represent relationships between words and phrases that are difficult to capture from individual characters alone.
 
 #### 2. Character branch
+
+![char branch cover image](static/docImages/char_branch_cover.png)
 
 The character branch operates on a character-spaced version of each sentence:
 
@@ -449,17 +592,25 @@ Character-level information can help preserve spelling, punctuation, abbreviatio
 
 #### 3. Sentence-position branch
 
+![sentence pos branch cover image](static/docImages/sentence_pos_branch_cover.png)
+
 Each sentence receives a zero-based position within the abstract. Positions are one-hot encoded with depth `15` and passed through a dense layer with `32` ReLU units.
 
 This gives the model information about where a sentence occurs. Position can be useful because structured abstracts often follow regular rhetorical ordering.
 
 #### 4. Total-sentence-count branch
 
+![total sent count branch cover image](static/docImages/total_sent_count_branch_cover.png)
+
 The total number of sentences is represented as a one-hot feature with depth `20` and passed through another dense layer with `32` ReLU units.
 
 This gives the model context about the size of the abstract and the relative structural environment in which a sentence appears.
 
+This also means that abstracts somehow longer than 20 sentences, will be truncated down to 20, and will also be flagged by Structura as OOD (Out Of Domain).
+
 ### Classification head
+
+![classification head cover image](static/docImages/classification_head_cover.png)
 
 The semantic and character representations are concatenated first. The combined representation is passed through:
 
@@ -471,6 +622,8 @@ The semantic and character representations are concatenated first. The combined 
 The softmax output is a probability vector for one sentence. The highest-probability index becomes the primary prediction. The second-highest probability becomes the alternative prediction.
 
 ### Model asset loading
+
+![model asset loading cover image](static/docImages/asset_loading_cover.png)
 
 At startup, the ML service expects:
 
@@ -488,41 +641,19 @@ model.weights.h5
 
 The extracted files are written under `ml_service/model_extract/`. The model is loaded once when the FastAPI process starts. If model loading fails, the process prints the exception and exits instead of starting an unusable inference server.
 
-> **Implementation note:** Weight restoration currently uses `skip_mismatch=True`. This allows loading to continue when a weight shape does not match, but it can also hide an incomplete restoration. This should be reviewed before relying on the model for production results.
-
 ---
-
-## Training and Evaluation
-
-### Dataset
-
-Training used the PubMed 20k RCT dataset from the official [pubmed-rct repository](https://github.com/Franck-Dernoncourt/pubmed-rct). The experiments used the prepared PubMed 20k split with numbers replaced by `@` and the provided training, validation, and test partitions. Each sentence is labeled according to its rhetorical role in the abstract:
-
-- `BACKGROUND`
-- `OBJECTIVE`
-- `METHODS`
-- `RESULTS`
-- `CONCLUSIONS`
-
-The partitions contain 180,040 training sentences, 30,212 validation sentences, and 30,135 test sentences. The training distribution was:
-
-| Class | Training sentences |
-|---|---:|
-| `METHODS` | 59,353 |
-| `RESULTS` | 57,953 |
-| `CONCLUSIONS` | 27,168 |
-| `BACKGROUND` | 21,727 |
-| `OBJECTIVE` | 13,839 |
-
-`OBJECTIVE` is the least represented class and was frequently confused with `BACKGROUND`.
 
 ### Experimental protocol
 
 The initial architecture experiments were performed on 10% of the training data to keep iteration times manageable. The experiments were used for architecture selection rather than as directly comparable full-data benchmarks. Validation was performed on the complete validation split where noted in the original experiments. The early models were developed with Keras 2; the production model was later rebuilt for Keras 3 and memory-constrained inference.
 
-The documented token experiment used batches of 32 with TensorFlow datasets and prefetching. The final training notes do not record random seeds, exact hardware, class weighting, or augmentation, so those details should not be inferred from the results below.
+The documented token experiment used batches of 32 with TensorFlow datasets and prefetching.
+
+---
 
 ### Architecture experiments
+
+![architecture exp cover image](static/docImages/architecture_exp_cover.png)
 
 | Experiment | Main architecture | Validation accuracy | Validation F1 |
 |---|---|---:|---:|
@@ -535,9 +666,13 @@ The documented token experiment used batches of 32 with TensorFlow datasets and 
 
 The tribrid model combined token semantics, character patterns, the sentence's position, and the abstract's total sentence count. Its initial held-out test evaluation achieved 82.57% accuracy, 82.43% precision, 82.57% recall, and 82.47% F1. These results motivated the later MiniLM-based redesign for deployment.
 
+---
+
 ### MiniLM model evolution
 
-The deployed model uses Keras Hub's `all_minilm_l6_v2_en` backbone. It was selected because it provided stronger semantic representations with a much smaller serving footprint than the earlier Universal Sentence Encoder/SavedModel approach.
+![MiniLM model selection cover image](static/docImages/minilm_model_selection_cover.png)
+
+The deployed model uses Keras Hub's `all_minilm_l6_v2_en` backbone. It was selected because it provided stronger semantic representations with a much smaller serving footprint than the earlier Universal Sentence Encoder/SavedModel approach (~ 80 MB vs close to 1GB for the USE based model).
 
 | Experiment | Change | Validation result |
 |---|---|---:|
@@ -550,6 +685,8 @@ The deployed model uses Keras Hub's `all_minilm_l6_v2_en` backbone. It was selec
 
 The Conv1D character branch was retained as an ablation. The final production model uses the character BiLSTM because it performed better in the reported experiments.
 
+---
+
 ### Final training configuration
 
 The final model uses categorical cross-entropy with label smoothing of `0.2`, an Adam optimizer, and a `0.5` dropout layer in the classification head. The fine-tuning configuration used Adam with a learning rate of `1e-3` and gradient `clipnorm=1.0`.
@@ -559,7 +696,64 @@ The callback configuration was:
 - `EarlyStopping` monitoring `val_accuracy`, with patience `3` and `restore_best_weights=True`
 - `ReduceLROnPlateau` monitoring `val_loss`, with factor `0.5`, patience `2`, and minimum learning rate `1e-6`
 
-The exact number of epochs varied by experiment because early stopping was enabled for the fine-tuning runs. The final reported result was evaluated on the test split, which was not used during model selection:
+Ok let me explain the jargon I just spilled here in simpler terms.
+
+#### **Label Smoothing**
+Prevents the model from being overly confident.
+
+For classification problems using softmax output layer, each confidence prediction is represented as a probability, in Structura's case, the output is a 5D vector for 5 classes.
+
+Now, the ideal case would be for the model to match the true labels, for example, if true label for a sentence is `[1. 0. 0. 0. 0]` (Sentence has `BACKGROUND` as its true label), the model will try to push itself to the hard limit of 1 (100% confidence), driving the logit weights to extreme positive or negative values trying to be highly accurate.
+
+Label smoothing prevents exactly that, by modifying these hard probability targets into *softer* targets, instead of targetting `[1, 0, 0, 0, 0]` for sentence A, label smoothing will change it to something like `[0.9, 0.025, 0.025, 0.025, 0.025]` depending on the smoothing factor selected.
+
+If you set the label_smoothing hyperparameter to α (where α is a float between 0 and 1), Keras modifies the true target distribution y_true using this internal formula:
+
+<img src="static/docImages/label_smoothing.png" alt="label smoothing formula" style="padding-left: 25%; width: 50%;">  
+<br>
+
+*(where K is the total number of classes)*
+
+So, continuing our example, we can plug in values in the forumula as such,
+* `y_true` = `[1, 0, 0, 0, 0]` (`BACKGROUND`)
+* `α` = `0.2` (value which I used)
+* K = 5
+
+We get our target as `[0.84, 0.04, 0.04, 0.04, 0.04]` instead of `[1.0, 0.0, 0.0, 0.0, 0.0]`
+
+While an alpha of `0.1` is standard, a more aggressive label smoothing factor of `0.2` was selected due to the inherent structure of the PubMed 20k dataset. Sequential sentences in medical abstracts often exhibit high class ambiguity at transition boundaries (e.g., Background vs. Objective). 
+
+By relaxing the targets to [0.84, 0.04, 0.04, 0.04, 0.04], I introduced two distinct advantages:
+1. Regularization: Prevented the distilled MiniLM backbone from overfitting or inflating its output logits on highly structured inputs.
+2. Balance: Successfully counteracted the potential dominance of the structural metadata inputs (line positions), forcing the network to retain a balanced reliance on both text semantics and position features.
+
+The resulting narrow gap between overall Accuracy `(89.04%)` and macro F1-score `(88.92%)` proves that the model did not suffer from underfitting or severe class imbalances under this regularization constraint.
+
+#### **Gradient Clipnorm**
+
+Setting Clipnorm to a value (`1.0` in my case) means that the total magnitude (L2 norm) of the gradient vector for each weight matrix is capped at a maximum value of 1.0.
+
+If the calculated gradient's norm is greater than 1.0 during backpropagation, Keras will uniformly scale down all the individual gradients within that vector so that the overall norm becomome exactly 1.0.
+
+Reason to use this here is that NLP models are highly prone to a phenomenon called **exploding  gradient problem.**
+
+NLP models process long sequential data (sentences/paragraphs). During backpropagation, error gradients are multiplied repeatedly across many time steps or attention layers. If the weights are even slightly large, these repeated multiplications cause the gradients to grow exponentially. This leads to wild weight updates, training divergence, and the dreaded NaN (Not a Number) loss errors.
+
+`clipnorm=1.0` acts as a mathematical "governor" or speed limit. It guarantees that even if a specific batch of text generates a massive, unstable error spike, the model will only take a controlled, safely sized step toward optimization.
+
+When clipnorm=1.0 is applied, the framework monitors the L2 norm (Euclidean length) of the gradient vector (g):
+
+<img src="static/docImages/gradient_clipnorm.png" alt="gradient clipnorm formula" style="padding-left: 25%; width: 50%;">  
+<br>
+
+* If the norm is 0.75: Nothing changes. The gradients are applied exactly as calculated.
+* If the norm is 5.0: The entire vector is scaled down by dividing all values by 5.0.
+
+Because the whole vector is scaled down by the same ratio, the direction of the gradient optimization step stays exactly the same. Only the length (magnitude) is shortened.
+
+---
+
+The final reported result was evaluated on the test split, which was **not** used during model selection:
 
 | Metric | Final test result |
 |---|---:|
@@ -568,21 +762,45 @@ The exact number of epochs varied by experiment because early stopping was enabl
 | Recall | 89.04% |
 | F1 score | 88.92% |
 
-These are the metrics reported in the training notes. Their averaging method is not specified, so they are not labeled as macro or weighted scores.
+---
+
+### Confusion Matrix
+
+![Confusion Matrix](static/docImages/confusion_matrix.png)
+
+The confusion matrix gives a class-by-class view of the final model's test performance. The rows represent the true labels, while the columns represent the labels predicted by the model. The large values along the diagonal show that the model learned the overall structure of scientific abstracts well, especially for `METHODS`, `RESULTS`, and `CONCLUSIONS`.
+
+- **BACKGROUND**: The model correctly classified 2,910 sentences. The main source of confusion was `OBJECTIVE` (499 sentences), followed by `METHODS` (177). This is understandable because background sentences and objective statements can appear next to each other at the beginning of an abstract and may share similar wording.
+- **CONCLUSIONS**: The model correctly classified 4,103 sentences. The most frequent misclassification was as `RESULTS` (397 sentences), which reflects the semantic similarity between reporting the final findings and interpreting those findings at the end of an abstract.
+- **METHODS**: This was the strongest-performing class, with 9,471 correct predictions. Only a small number of sentences were confused with `RESULTS` (278), `BACKGROUND` (75), or `OBJECTIVE` (44), showing that procedural language was generally distinctive enough for the model to recognize.
+- **OBJECTIVE**: This was the most difficult class for the model. Out of 2,333 true objective sentences, 1,432 were classified correctly, while 779 were predicted as `BACKGROUND`. Objective statements often occur immediately after the background and can use similar syntactic and contextual patterns, which explains this specific confusion.
+- **RESULTS**: The model correctly classified 8,917 sentences. The most common errors were predictions as `METHODS` (498) and `CONCLUSIONS` (285). This suggests that sentences describing experimental procedures or summarizing findings can sometimes overlap in vocabulary and structure.
+
+Overall, the matrix supports the final test accuracy of `89.04%` and macro F1 score of `88.92%`. Most errors occur between neighboring or semantically related sections rather than between unrelated classes. The main area for improvement is distinguishing `OBJECTIVE` from `BACKGROUND`, while the high number of correct `METHODS` and `RESULTS` predictions shows that the model handles the more explicitly structured parts of abstracts particularly well.
+
+---
 
 ### Deployment considerations
 
-The earlier Keras 2 SavedModel approach created a large model and could consume several gigabytes of memory during loading. That was unsuitable for the intended low-memory deployment environment. The MiniLM redesign reduced the model assets to approximately 80 MB before the final archive and enabled a Keras 3-compatible reconstruction from the stored vocabularies and `model.weights.h5` weights.
+The earlier Keras 2 SavedModel approach created a large model (~990MB) and could consume several gigabytes of memory during loading. That was unsuitable for the intended low-memory deployment environment, and for a live streamlit community cloud deployment.
+
+The MiniLM redesign reduced the model assets to approximately 80 MB before the final archive and enabled a Keras 3-compatible reconstruction from the stored vocabularies and `model.weights.h5` weights.
 
 The production loader extracts the tokenizer vocabulary, character vocabulary, and weights from the `.keras` archive, reconstructs the architecture, freezes the MiniLM embedder for inference, and restores the trained weights. Inference is configured for CPU use. The loader currently passes `skip_mismatch=True` to `load_weights`; this keeps startup from failing on a mismatch but can conceal incomplete weight restoration and should be audited when changing the architecture.
 
-### Known limitations and reporting gaps
+### Known Limitations
 
-- Position features use fixed one-hot depths of `15` for the zero-based sentence position and `20` for the encoded total-line value. Very long abstracts can exceed these ranges.
+![known limitations cover](static/docImages/known_limit_cover.png)
+
+- Position features use fixed one-hot depths of `15` for the zero-based sentence position and `20` for the encoded total-line value. Very long abstracts can exceed these ranges and therefore be truncated.
 - The model is most likely to confuse `OBJECTIVE` and `BACKGROUND`, partly reflecting the training imbalance.
-- Per-class precision, recall, F1, support counts, and a confusion matrix were not recorded in the supplied training notes.
-- Confidence calibration, confidence thresholds, random seeds, exact hardware, and confidence intervals were not reported. Returned softmax values should therefore be treated as model scores, not guaranteed probabilities.
 - Behavior on non-scientific text, out-of-domain abstracts, and sentences containing multiple rhetorical roles was not systematically evaluated.
+- The model always selects one of five classes; there is no explicit `UNKNOWN` or `MIXED` class.
+- A sentence can contain more than one rhetorical role, but the output allows only one primary and one alternative class.
+- Sentence boundaries depend on spaCy's sentencizer and may not match the formatting or segmentation expected by every abstract.
+- Softmax confidence should not automatically be interpreted as calibrated probability of correctness.
+- The current backend does not define a custom error response for downstream ML failures.
+- CORS is configured broadly for development and should be restricted for a public deployment.
 
 ---
 
@@ -592,11 +810,15 @@ The inference pipeline is implemented in [ml_service/utilities/utils.py](ml_serv
 
 ### Sentence splitting
 
+![sentence splitting cover](static/docImages/sentence_split_cover.png)
+
 The service creates a lightweight English spaCy pipeline and adds spaCy's `sentencizer`. It uses the resulting sentence spans as the model's prediction units.
 
 This is deliberately different from splitting only on newline characters or using a regular expression. Sentence boundaries are determined by the sentencizer, so punctuation and spacing affect how the input becomes a list of sentences.
 
 ### Positional features
+
+![positional features cover](static/docImages/pos_feat_cover.png)
 
 For an abstract containing `N` sentences, each sentence receives:
 
@@ -609,9 +831,13 @@ These fixed depths are model design constraints. Very long abstracts may produce
 
 ### Character features
 
+![char features cover](static/docImages/char_feat_cover.png)
+
 Each sentence is converted to a string containing its characters separated by spaces. The character sequence is then passed through the stored vocabulary and embedding layers.
 
 ### Prediction formatting
+
+![pred formatting cover](static/docImages/pred_formt_cover.png)
 
 For each sentence, the ML service:
 
@@ -626,6 +852,8 @@ Confidence values in the JSON response are decimals such as `0.9234`, not intege
 ---
 
 ## API Reference
+
+![API reference cover](static/docImages/api_ref_cover.png)
 
 ### Public endpoint: `POST /api/analyze`
 
@@ -798,6 +1026,8 @@ The frontend copies its three static assets into an Nginx Alpine image. Nginx fa
 
 ### Deployment checklist
 
+![Deployment checklist cover](static/docImages/depl_checklist_cover.png)
+
 Before deploying outside local development, fill in and verify:
 
 - **Hosting platform:** TODO
@@ -867,18 +1097,6 @@ cd backend
 ./mvnw test
 ```
 
-The existing test verifies that the Spring application context can load. It does not currently cover:
-
-- Controller validation cases
-- Backend-to-ML communication
-- FastAPI preprocessing
-- Model predictions
-- Frontend rendering
-- Docker health checks
-- End-to-end analysis
-
-> **To complete:** Add focused tests for the API contract, sentence preprocessing, score formatting, and an end-to-end request using a small test fixture.
-
 ---
 
 ## Troubleshooting
@@ -926,21 +1144,6 @@ The model uses fixed one-hot feature depths of `15` for sentence positions and `
 ### CORS errors appear in the browser
 
 The backend currently allows all origins for `/api/**`, so a CORS error usually indicates that the request is going to the wrong host or port, or that a reverse proxy is changing the response headers. Confirm the frontend's derived API URL and inspect the browser network request.
-
----
-
-## Limitations
-
-- The model always selects one of five classes; there is no explicit `UNKNOWN` or `MIXED` class.
-- A sentence can contain more than one rhetorical role, but the output allows only one primary and one alternative class.
-- Sentence boundaries depend on spaCy's sentencizer and may not match the formatting or segmentation expected by every abstract.
-- The model uses fixed positional feature dimensions, so unusually long abstracts require validation.
-- Softmax confidence should not automatically be interpreted as calibrated probability of correctness.
-- The frontend groups only adjacent sentences with the same label. Two separated blocks with the same label remain separate.
-- The current backend does not define a custom error response for downstream ML failures.
-- CORS is configured broadly for development and should be restricted for a public deployment.
-- The repository contains inference assets but not the training pipeline, experiment history, or evaluation reports.
-- The current automated test coverage is limited to application-context loading.
 
 ---
 

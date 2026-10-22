@@ -1,10 +1,7 @@
 package com.aaryan.structura;
 
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
 
 import com.aaryan.structura.dto.AltPredDTO;
 import com.aaryan.structura.dto.AnalyzeRequestDTO;
@@ -16,8 +13,13 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.ObjectWriter;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -33,27 +35,60 @@ public class AbstractAnalysisService {
 
     // private final ObjectWriter prettyJsonWriter;
 
-    private final RestClient restClient;
+    private final HttpClient httpClient;
+    private final ObjectMapper objectMapper;
     private final String mlServiceUrl;
     private final OodClassifier oodClassifier;
 
     public AbstractAnalysisService(
-            RestClient restClient,
+            ObjectMapper objectMapper,
             @Value("${structura.ml-service-url}") String mlServiceUrl) {
-        this.restClient = restClient;
+        this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
+        this.objectMapper = objectMapper;
         this.mlServiceUrl = mlServiceUrl;
         this.oodClassifier = new OodClassifier();
     }
 
     public AnalyzeResponseDTO analyze(String text) {
         AnalyzeRequestDTO payload = new AnalyzeRequestDTO(text);
+        String requestBody;
 
-        MlAnalyzeResponseDTO response = restClient.post()
-                .uri(mlServiceUrl)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(payload)
-                .retrieve()
-            .body(new ParameterizedTypeReference<MlAnalyzeResponseDTO>() {});
+        try {
+            requestBody = objectMapper.writeValueAsString(payload);
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("Unable to serialize ML analysis request", exception);
+        }
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(mlServiceUrl))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
+
+        HttpResponse<String> httpResponse;
+        try {
+            httpResponse = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to call ML analysis service", exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("ML analysis request was interrupted", exception);
+        }
+
+        if (httpResponse.statusCode() < 200 || httpResponse.statusCode() >= 300) {
+            throw new IllegalStateException(
+                    "ML analysis service returned HTTP " + httpResponse.statusCode()
+                            + ": " + httpResponse.body());
+        }
+
+        MlAnalyzeResponseDTO response;
+        try {
+            response = objectMapper.readValue(httpResponse.body(), MlAnalyzeResponseDTO.class);
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("Unable to deserialize ML analysis response", exception);
+        }
 
         if (response == null) {
             return null;

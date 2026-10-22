@@ -144,6 +144,7 @@ main {
 .glass-panel,
 .sample-card,
 .limitations-section,
+.about-section,
 .alt-predictions,
 .theme-toggle,
 .btn-secondary,
@@ -160,6 +161,7 @@ main {
 .sample-card::before,
 .textarea-wrapper::before,
 .limitations-section::before,
+.about-section::before,
 .alt-predictions::before {
     content: "";
     position: absolute;
@@ -178,6 +180,7 @@ main {
 .sample-card,
 .textarea-wrapper,
 .limitations-section,
+.about-section,
 .alt-predictions {
     position: relative;
 }

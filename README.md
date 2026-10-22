@@ -366,7 +366,7 @@ The page provides:
 - A light/dark theme toggle
 - An educational limitations section
 
-<img src="static/docImages/frontend_interface.png" alt="Primary & Alternate prediction UI" style="padding-left: 30%; width: 50%;">  
+<img src="static/docImages/frontend_interface.png" alt="UI" style="padding-left: 30%; width: 50%;">  
 <br>
 
 ### Rendering predictions
@@ -780,6 +780,51 @@ Overall, the matrix supports the final test accuracy of `89.04%` and macro F1 sc
 
 ---
 
+### Out-of-domain detection
+
+Out-of-domain (OOD) data is input that does not match the kind of data a model was trained to understand. For Structura, the intended domain is English medical and clinical research abstracts, especially abstracts whose sentences follow the rhetorical patterns represented in the PubMed 20k RCT training data. A robotics abstract, a general news article, a very short fragment, or a long block of unrelated prose can still be sent through the model, but it is not necessarily a reliable match for that domain.
+
+This distinction matters because Structura's classifier does not have an `UNKNOWN` output class. Every sentence is assigned one of the five known roles, even when none of those roles is a good fit. The softmax layer must distribute a total probability of `1` across `BACKGROUND`, `OBJECTIVE`, `METHODS`, `RESULTS`, and `CONCLUSIONS`; it cannot say that the text is outside the training domain. Consequently, an OOD abstract can receive plausible-looking labels and high individual scores. Those labels should not be interpreted as evidence that the abstract is a medical research paper or that its rhetorical structure was identified reliably.
+
+Structura therefore performs a lightweight OOD check after the FastAPI model has returned its sentence predictions. This is not a second neural network and it does not change the sentence labels. It is a set of document-level heuristics implemented in the Spring Boot backend, where the results from all sentences are available together. The backend places the result in the `isLikelyOOD` field of the public response, and the frontend uses that boolean to show a warning while still displaying the analysis.
+
+#### How the Spring Boot OOD classification works
+
+The logic is implemented in `backend/src/main/java/com/aaryan/structura/OodClassifier.java`. It receives the list of `SentPredDTO` objects returned by the ML service. Each prediction contains the sentence, its primary `predictedClass`, and the primary class's `confidence`. The classifier returns `true` as soon as any of the following checks indicates that the document may not be a supported abstract:
+
+1. **Sentence-count check**: the prediction list must contain at least `3` and at most `30` sentences. Fewer than three sentences provide too little document-level structure for a meaningful abstract analysis. More than thirty sentences exceed the range the application treats as a normal abstract and may also interact poorly with the model's fixed positional feature representation. Both boundaries are inclusive, so exactly `3` and exactly `30` sentences pass this check.
+
+2. **Mean-confidence check**: the classifier calculates the arithmetic mean of the primary confidence values:
+
+   ```text
+   mean confidence = (confidence_1 + confidence_2 + ... + confidence_N) / N
+   ```
+
+   If this mean is below `0.45`, the document is flagged. This uses the confidence of the winning class for each sentence, not the alternative score and not the average of every value in `rawScores`. A low mean suggests that the model is repeatedly uncertain about which of the five learned roles best describes the input. A mean of exactly `0.45` passes because the implementation uses a strict `< 0.45` comparison.
+
+3. **Prediction-volatility check**: the classifier compares each sentence's primary class with the class assigned to the immediately preceding sentence. It counts the changes and divides by the number of adjacent pairs:
+
+   ```text
+   change rate = number of adjacent class changes / (N - 1)
+   ```
+
+   If the rate is at least `0.67`, the document is flagged. Repeatedly changing between structural roles can indicate that the model is forcing arbitrary labels onto text whose organization does not resemble the training domain. A stable sequence can still be wrong, so this check is a signal rather than proof of in-domain content.
+
+The checks are combined with logical OR, not voting. A document is considered likely OOD if its sentence count is invalid, its mean confidence is below the threshold, or its label-change rate reaches the volatility threshold. A `null` prediction list is also treated as OOD because there is no valid model output to evaluate. An empty list is flagged by the sentence-count rule. For one or more sentences, the volatility check itself is skipped when there is no adjacent pair, but the sentence-count rule still prevents such a result from passing as a valid abstract.
+
+#### Where the flag is added
+
+The `AbstractAnalysisService` calls the ML service first and preserves its sentence predictions and raw output. It then invokes `oodClassifier.isLikelyOOD(response.data())` and constructs the browser-facing `AnalyzeResponseDTO` with that boolean. This keeps the ML service focused on preprocessing and inference while the Spring Boot boundary owns the application-level interpretation of the response.
+
+The frontend does not discard or relabel predictions when `isLikelyOOD` is `true`. Instead, it displays the message that the text looks different from the medical abstracts Structura usually reads and explains that the structural labels may be less accurate. This is intentional: the heuristics provide a warning about reliability, not a mathematically definitive OOD probability or a hard request rejection. The API can therefore remain useful for inspection while making the limitation visible to the user.
+
+<img src="static/docImages/ood_flagged.png" alt="OOD flag on frontend" style="padding-left: 30%; width: 50%;">  
+<br>
+
+These checks should be understood as conservative indicators, not a guarantee of domain membership. An in-domain abstract with unusual wording may be flagged, while an OOD document that imitates the style and vocabulary of a clinical abstract may pass. The thresholds (`0.45`, `0.67`, `3`, and `30`) are application heuristics and should be recalibrated against a labelled mixture of in-domain and OOD abstracts if the detector becomes a critical production decision.
+
+---
+
 ### Deployment considerations
 
 The earlier Keras 2 SavedModel approach created a large model (~990MB) and could consume several gigabytes of memory during loading. That was unsuitable for the intended low-memory deployment environment, and for a live streamlit community cloud deployment.
@@ -1186,8 +1231,16 @@ The API returns the full five-class score vector instead of exposing only the wi
 
 ```text
 Structura/
-├── docker-compose.yml                 # Three-service local orchestration
-├── README.md                          # Project documentation
+├── .devcontainer/
+│   └── devcontainer.json              # Development-container configuration
+├── .dockerignore                       # Files excluded from Docker build contexts
+├── docker-compose.yml                  # Three-service local orchestration
+├── LICENSE                             # Project license
+├── README.md                           # Project documentation
+├── model_training/
+│   └── model_training_notebook.ipynb   # Model training and experiment notebook
+├── static/
+│   └── docImages/                      # README and documentation images
 ├── frontend/
 │   ├── Dockerfile                     # Nginx static-site image
 │   ├── nginx.conf                     # Nginx server configuration
@@ -1196,28 +1249,48 @@ Structura/
 │   └── styles.css                     # Frontend styling
 ├── backend/
 │   ├── Dockerfile                     # Multi-stage Java image
+│   ├── .gitattributes                  # Git attributes for the backend
+│   ├── .gitignore                      # Backend-specific ignore rules
+│   ├── .mvn/wrapper/
+│   │   └── maven-wrapper.properties    # Maven Wrapper configuration
 │   ├── pom.xml                        # Maven and Spring dependencies
 │   ├── mvnw                            # Maven Wrapper
+│   ├── mvnw.cmd                        # Maven Wrapper for Windows
 │   └── src/
 │       ├── main/java/com/aaryan/
 │       │   ├── config/CorsConfig.java
 │       │   └── structura/
-│       │       ├── StructuraApplication.java
-│       │       ├── AbstractAnalysisService.java
-│       │       ├── controller/
-│       │       └── dto/
-│       ├── main/resources/application.properties
+│       │           ├── StructuraApplication.java
+│       │           ├── AbstractAnalysisService.java
+│       │           ├── OodClassifier.java
+│       │           ├── controller/
+│       │           │   ├── AbstractAnalysisController.java
+│       │           │   └── HelloWorldController.java
+│       │           └── dto/
+│       │               ├── AltPredDTO.java
+│       │               ├── AnalyzeRequestDTO.java
+│       │               ├── AnalyzeResponseDTO.java
+│       │               ├── MlAnalyzeResponseDTO.java
+│       │               └── SentPredDTO.java
+│       ├── main/resources/
+│       │   └── application.properties
 │       └── test/java/com/aaryan/structura/
+│           ├── OodClassifierTest.java
+│           └── StructuraApplicationTests.java
 ├── ml_service/
 │   ├── Dockerfile                     # Python runtime image
 │   ├── requirements.txt               # ML dependencies
 │   ├── main.py                        # FastAPI routes and model assembly
 │   ├── model/structura.keras          # Model archive and trained assets
-│   ├── model_extract/                 # Extracted vocabularies and weights
+│   ├── model_extract/
+│   │   ├── model.weights.h5            # Extracted model weights
+│   │   └── assets/layers/              # Extracted tokenizer vocabularies
 │   └── utilities/
+│       ├── __init__.py
 │       ├── class_names.txt            # Output class order
 │       └── utils.py                   # Preprocessing and formatting
-└── LICENSE
+└── .vscode/
+    └── launch.json                     # Local VS Code launch configuration
 ```
 
 ---
@@ -1230,4 +1303,25 @@ See [LICENSE](LICENSE) for the project license.
 
 ## Acknowledgements
 
-> **To complete:** Add links and attribution for the dataset, pretrained MiniLM model, Keras Hub components, spaCy, TensorFlow, Spring Boot, FastAPI, and any sources used to create the training labels or sample abstracts.
+Structura was built with the help of the following research, datasets, model components, and open-source software:
+
+### Research and dataset
+
+- The training data and sentence-level rhetorical labels come from the [PubMed 20k RCT dataset](https://github.com/Franck-Dernoncourt/pubmed-rct), published in [*PubMed 200k RCT: a Dataset for Sequential Sentence Classification in Medical Abstracts*](https://arxiv.org/abs/1710.06071) by Franck Dernoncourt and Ji Young Lee.
+- The model architecture is inspired by [*Neural Networks for Joint Sentence Classification in Medical Paper Abstracts*](https://arxiv.org/abs/1612.05251) by Franck Dernoncourt and Michael Taboada.
+- The project uses the official PubMed RCT train, validation, and test splits, with the dataset's number normalization convention retained.
+
+### Model and machine-learning tooling
+
+- [Keras Hub](https://keras.io/keras_hub/) provides the `BertTextEmbedder`, tokenizer, and pretrained `all_minilm_l6_v2_en` backbone used by the semantic branch.
+- [TensorFlow](https://www.tensorflow.org/) and [Keras](https://keras.io/) provide the model construction, inference, and training APIs.
+- [spaCy](https://spacy.io/) provides the lightweight English sentence segmentation pipeline used during inference.
+
+### Application infrastructure
+
+- [FastAPI](https://fastapi.tiangolo.com/) provides the Python inference-service API.
+- [Spring Boot](https://spring.io/projects/spring-boot) provides the Java backend that validates requests, coordinates the services, and performs the document-level OOD checks.
+- [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) make the three-service local deployment reproducible.
+- [Nginx](https://nginx.org/) serves the static frontend in the production-like container setup.
+
+The sample abstracts and interface examples included in this repository are illustrative material prepared for demonstrating Structura's behavior. They are not presented as additional training data or as part of the PubMed RCT dataset.

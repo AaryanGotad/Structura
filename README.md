@@ -1212,21 +1212,6 @@ The API returns the full five-class score vector instead of exposing only the wi
 
 ---
 
-## Future Work
-
-- Add the training pipeline and experiment configuration to the repository.
-- Document dataset provenance, labeling rules, and model evaluation.
-- Add model and API integration tests.
-- Add explicit handling for oversized abstracts and sentence-count limits.
-- Investigate confidence calibration and an abstention or `MIXED` class.
-- Add structured error responses shared by the backend and ML service.
-- Restrict CORS to known deployment origins.
-- Add request limits and observability for production use.
-- Add frontend screenshots and an architecture illustration once final design assets are available.
-- Add a deployment configuration for the chosen hosting platform.
-
----
-
 ## Repository Structure
 
 ```text

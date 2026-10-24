@@ -2,20 +2,31 @@
 
 # Structura - Scientific Abstract Structure Analysis
 
-Structura is a full-stack machine learning application that analyzes scientific abstracts sentence by sentence. It assigns each sentence a structural role, such as `BACKGROUND`, `OBJECTIVE`, `METHODS`, `RESULTS`, or `CONCLUSIONS`, and presents the predictions as a readable structured abstract.
+Structura reads a scientific abstract one sentence at a time and tells you what each sentence is doing: setting the scene (`BACKGROUND`), stating the aim (`OBJECTIVE`), describing the approach (`METHODS`), reporting what was found (`RESULTS`), or wrapping things up (`CONCLUSIONS`). It then shows the abstract back to you with those labels, so it's much easier to scan.
 
-The project is built as three cooperating services:
+I built it as three small services that work together:
 
-- A plain HTML, CSS, and JavaScript frontend served by Nginx
-- A Spring Boot backend that validates requests and coordinates analysis
-- A FastAPI and TensorFlow service that preprocesses text and runs the model inference
+- A plain HTML, CSS, and JavaScript frontend, served by Nginx
+- A Spring Boot backend that checks incoming requests and coordinates everything
+- A FastAPI and TensorFlow service that prepares the text and runs the model
 
-The goal is not to generate or rewrite a scientific abstract. Structura identifies the likely role of each sentence in an existing abstract so that the organization of the research is easier to scan.
+One thing worth saying up front: Structura doesn't write or rewrite abstracts. It only labels the sentences that are already there.
 
 ---
 
-# Live Streamlit Demo
-Since, deploying the complete project with all of its components is not possible for me (as of 2026) on free tiers on hosting services, specifically the ML service layer. So, what I *did* instead was made a Streamlit application, with similar UI and functionalities as this Full-Stack implementation, and hosted it on Streamlit Community Cloud (for free!), for anyone not wanting to setup this whole thing locally, to explore it, on the fly!
+## Where to start
+
+This README is long, but you don't need to read all of it. Pick whichever sounds like you:
+
+- **I just want to try it.** Use the [live demo](#live-streamlit-demo). Nothing to install.
+- **I want to run the full project.** Jump to [Docker Compose Deployment](#docker-compose-deployment). It's one command.
+- **I'm curious how the model works.** Head to the [Deep Learning Model](#deep-learning-model) section. I explain the unfamiliar terms as I go.
+
+---
+
+## Live Streamlit Demo
+
+Hosting the whole project on free tiers isn't possible for me right now (as of 2026), mainly because of the ML service. So I did the next best thing: I built a Streamlit app with a similar UI and the same functionality as this full-stack version, and hosted it for free on Streamlit Community Cloud. If you'd rather not set everything up locally, you can explore Structura there.
 
 [Check it out](https://structura-app-impl-ltkaydtkesgwkrhmanxwyf.streamlit.app/)!
 
@@ -23,19 +34,30 @@ Since, deploying the complete project with all of its components is not possible
 
 ## Features
 
-- Sentence-level classification of scientific abstracts
-- Five structural classes: `BACKGROUND`, `OBJECTIVE`, `METHODS`, `RESULTS`, and `CONCLUSIONS`
-- A primary prediction and an alternative prediction for every sentence
-- Confidence scores for both predictions
+- Classifies a scientific abstract sentence by sentence
+- Uses five labels: `BACKGROUND`, `OBJECTIVE`, `METHODS`, `RESULTS`, and `CONCLUSIONS`
+- Gives each sentence a main prediction and a runner-up, each with a confidence score
+- Shows the raw score for every class, both in the UI and in the API response
+- Groups neighboring sentences with the same label into one readable block
+- Warns you when the text doesn't look like the medical abstracts the model learned from
+- Comes with sample medical abstracts (Orthopedics, Endocrinology, and Pulmonology) plus an OOD (Out Of Domain) Robotics example. The Robotics one gives a rough idea of how the model behaves on an abstract that is structured like an RCT (Randomized Controlled Trial) but isn't from medical research.
+- Runs with a single Docker Compose setup
+- Keeps the model in its own service, separate from the Java backend
+
 <img src="static/docImages/prim_alt_pred.png" alt="Primary & Alternate prediction UI" style="padding-left: 30%; width: 50%;">  
 <br>
 
-- Raw five-class probability scores in the API response and UI
+### A closer look at the raw output
+
+Behind every prediction there are five raw scores, one per class, showing how much the model leaned towards each label. Here's a sample abstract:
+
 <img src="static/docImages/example_api_response.png" alt="Sample API Response Text" style="padding-left: 30%; width: 50%;">
 <br>
 
-**API RESPONSE FOR THE ABOVE SAMPLE**
-<div style="margin-left: 17.5%; width: 80%; overflow: auto;">
+And here's what the API sends back for it. It's long, so I've folded it away. Open it if you're curious.
+
+<details>
+<summary><b>See the full API response for this example</b></summary>
 
 ```json
 {
@@ -190,17 +212,19 @@ Since, deploying the complete project with all of its components is not possible
 }
 ```
 
-</div>
+</details>
 
-<img src="static/docImages/raw_otpt.png" alt="Custom CNN training metrics" style="padding-left: 33%; width: 50%;">  
+You don't need to read every number. These are the fields that matter:
+
+- **`predictedClass` and `confidence`**: the model's top pick for the sentence, and how strongly it favored it.
+- **`alternative`**: the runner-up label and its score.
+- **`rawScores`**: all five scores, always in this order: `BACKGROUND`, `CONCLUSIONS`, `METHODS`, `OBJECTIVE`, `RESULTS`. They add up to 1.
+- **`rawOutput`**: the same scores for every sentence, printed as plain text. I mostly keep it around for debugging.
+
+The same scores appear in the **Raw output** panel of the UI:
+
+<img src="static/docImages/raw_otpt.png" alt="Raw output score table in the UI" style="padding-left: 33%; width: 50%;">  
 <br>
-
-- Readable grouping of adjacent sentences with the same predicted class
-- Sample medical abstracts covering Orthopedics, Endocrinology, Pulmonology, and also an OOD (Out Of Domain) example of Robotics, to give a very rough idea of how the model performs on abstracts of similar structure to an RCT (Randomized Controlled Trial) but not neccessarily from a medical research paper.
-
-- Docker Compose setup for running the complete application locally
-
-- Separate API and inference services so the model runtime is isolated from the Java backend
 
 ---
 
@@ -208,17 +232,17 @@ Since, deploying the complete project with all of its components is not possible
 
 ![what structura does cover image](static/docImages/what_structura_does_cover.png)
 
-A scientific abstract usually follows a recognizable rhetorical structure. For example, it may begin by explaining a problem, state the purpose of a study, describe how the study was performed, report the findings, and finish with an interpretation or conclusion.
+A scientific abstract usually tells a small story. It starts with the problem, says what the study set out to do, explains how it was done, reports what was found, and ends with what it all means.
 
-Structura treats each sentence as an individual classification unit. Given an abstract such as:
+Structura looks at each sentence on its own. Take this abstract:
 
 ```text
 Chronic low back pain remains a major cause of disability worldwide, with limited long-term efficacy from standard physical therapies. We aimed to evaluate whether an 8-week mindfulness-based stress reduction (MBSR) program reduces pain intensity compared to usual care. A randomized, parallel-group trial was conducted with 240 adults aged 18 to 65 years diagnosed with persistent non-specific low back pain. Participants were randomly assigned 1:1 to either the MBSR group or a waitlist control receiving standard medical care. The primary outcome was the change in back pain intensity measured on a 10-point visual analog scale at 24 weeks. A total of 218 participants completed the final 24-week follow-up assessment. The MBSR group demonstrated a significant reduction in pain scores compared to the control group (mean difference -1.4 points; 95% CI, -1.9 to -0.9; P < 0.001). No serious adverse events associated with the intervention were reported during the trial period. An 8-week MBSR program provides clinically meaningful, sustained improvement in pain and functional limitations for patients with chronic low back pain.
 ```
 
-the model can return a prediction for each sentence:
+For it, the model gives every sentence one of these labels:
 
-| Sentence role | Example meaning |
+| Sentence role | What it means |
 |---|---|
 | `BACKGROUND` | Context, motivation, or a problem being addressed |
 | `OBJECTIVE` | The aim, question, or purpose of the study |
@@ -226,27 +250,29 @@ the model can return a prediction for each sentence:
 | `RESULTS` | Findings, measurements, statistical outcomes, or observations |
 | `CONCLUSIONS` | Interpretation, implication, or final claim |
 
-The frontend then groups consecutive sentences with the same predicted class into labeled blocks. This creates a structured view without changing the original sentence text.
+The frontend then groups consecutive sentences with the same label into labeled blocks. Your text itself never changes.
 
 ---
 
 ## User Workflow
 
-1. Open the frontend at `http://localhost:3000` after starting the Docker Compose stack.
-2. Paste a scientific abstract into the text area, or select one of the built-in sample abstracts.
+1. Start the Docker Compose stack and open the frontend at `http://localhost:3000`.
+2. Paste a scientific abstract into the text area, or pick one of the built-in samples.
 3. Select **Analyze abstract**.
-4. The frontend sends the text to the Spring Boot API.
-5. The Spring Boot service forwards the request to the internal ML service.
-6. The ML service splits the abstract into sentences and predicts a class for each sentence.
-7. The frontend renders the primary predictions as a structured abstract.
-8. Expand the alternative prediction panel to inspect the second most likely class for each sentence.
-9. Open **Raw output** to inspect the score assigned to every class.
+4. The frontend sends your text to the Spring Boot API.
+5. Spring Boot passes it on to the internal ML service.
+6. The ML service splits the abstract into sentences and predicts a label for each one.
+7. The frontend shows the main predictions as a structured abstract.
+8. Expand the alternative prediction panel to see the second most likely label for each sentence.
+9. Open **Raw output** to see the score for every class.
 
-The **Clear** action removes the input and any displayed result. During inference, the input and analyze button are disabled and a loading state is shown. If the request fails, the frontend logs the error and displays a browser alert.
+**Clear** removes the input and any results. While the model is working, the input and the analyze button are disabled and a loading state is shown. If the request fails, the frontend logs the error and shows a browser alert.
 
 ---
 
 ## System Architecture
+
+Here's the path a request takes, from pasting an abstract to seeing the result:
 
 ```mermaid
 flowchart TD
@@ -269,29 +295,33 @@ flowchart TD
 
 ### Why there are two backend services
 
-The Spring Boot application is the browser-facing application backend. It owns the public `/api/analyze` route, validates the request, and forwards the text to the model service using Spring's `RestClient`.
+Structura has two backends: one in Java (Spring Boot) and one in Python (FastAPI). Here's what each one does.
 
-The FastAPI application owns Python-specific machine learning work. It loads TensorFlow, Keras Hub, spaCy, the model assets, the vocabulary files, and the trained weights. Keeping that runtime separate means the Java application does not need to load TensorFlow or know how the model is assembled.
+**Spring Boot** is the one the browser talks to. It owns the public `/api/analyze` route, checks the request, and sends the text to the model service using Spring's `RestClient`. When the answer comes back, it also runs the out-of-domain check (more on that later).
 
-In Docker Compose, the services communicate over the internal Compose network. The backend uses:
+**FastAPI** handles everything Python-specific about the model. It loads TensorFlow, Keras Hub, spaCy, the model assets, the vocabulary files, and the trained weights. Keeping all of that in its own service means the Java side never has to load TensorFlow or know how the model is put together.
+
+Inside Docker Compose, the two services talk over the internal network. The backend calls:
 
 ```text
 http://ml-service:8000/analyze
 ```
 
-The browser should normally communicate with the Spring backend, not directly with the ML service.
+The browser only talks to the Spring backend, never straight to the ML service.
 
-Now, many of you may think that the SpringBoot layer is basically just a pass through layer, doing nothing except validating whether an actual text content is being passed, one can very easily do the exact same thing in FastAPI using PyDantic models or even just raw FastAPI if they want, then what's the point?
+#### "But isn't Spring Boot just passing things along?"
 
-And you are right, there is no major benifit having that SpringBoot layer **currently**.
+You might be thinking that, and it's a fair question. Right now the Spring layer does three small jobs: it validates the request, forwards it, and adds the OOD flag. FastAPI could do all of that on its own with Pydantic models, so today there's no big technical win from having Spring in the middle. I'd rather be upfront about that.
 
-You see most large scale enterprise softwares *still* use springboot as their main backend with no plans to migrate away from it due to its unmatched efficiency, robust ecosystem, and proven capacity to handle massive, high-throughput applications, this includes **Enterprise Banking**, **Financial Services**, and **Insurance (BFSI)** along with **Large-Scale E-commerce / Retail Tech**.
-Rather than rewriting their core infrastructure in Python to adopt AI/ML features, these industries universally prefer a polyglot microservices architecture.
+So why did I do it? Spring Boot is still the backbone of a lot of large company software, in places like banking, insurance, and big e-commerce. Teams there often add ML features as a separate Python service next to their Java system, instead of rewriting everything in Python. I wanted to learn what that kind of setup feels like, and Structura is my practice project for it.
 
-And that is what I have begun learning through Structura.
+It also keeps my options open:
 
-This **de-coupled** architecture gives me immense flexibility. If I ever upgrade my model, I would just have to edit the ML service layer accordingly, without ever needing the touch the backend or presentation layer.
-If I ever decide to add a persistence layer as well using a DB, having user auth and history, i would just have to deal with the SpringBoot code, without needing to worry about making the ML part of the app to be compatible. Or say if i upgrade my frontend to a larger framework like React, i won't even bother looking at the backend and ml service code, they would just work as intended (obviously given i correctly manage to connect to the springboot backend correctly).
+- **Upgrading the model?** I only touch the ML service.
+- **Adding a database, user accounts, or history?** I only touch the Spring Boot code. The ML side doesn't need to know.
+- **Moving the frontend to something like React?** The backend and ML service stay as they are, as long as the new frontend calls the same `/api/analyze` route.
+
+Here's the same idea as a picture. The dashed boxes are things I might add later:
 
 ```mermaid
 flowchart TD
@@ -304,7 +334,7 @@ flowchart TD
     %% Core Backend Layer (Spring Boot)
     subgraph Spring ["Core Backend (Spring Boot)"]
         API[Public Route: /api/analyze]
-        Val[Request Validation & Routing]
+        Val[Validation, Routing & OOD Check]
         FutureDB[(Future: DB & Auth)] -. "Adds persistence natively" .-> API
         API --> Val
     end
@@ -329,19 +359,19 @@ flowchart TD
     class FutureUI,FutureDB,FutureModel future;
 ```
 
-I hope you are slowly starting to get the idea of how much potential a de-coupled architecture holds.
+That's the idea I'm exploring: every piece can change without the others noticing.
 
 ### Request lifecycle
 
-1. The frontend trims the textarea value and sends `{ "text": "..." }` as JSON.
-2. `AbstractAnalysisController` rejects a missing or blank `text` value with HTTP `400`.
-3. `AbstractAnalysisService` creates the same request DTO and posts it to `ML_SERVICE_URL`.
-4. FastAPI passes the text through `preprocess_text`.
-5. The model receives semantic, character-level, and positional features for every sentence.
-6. The ML service formats the probability vectors into primary and alternative predictions.
-7. The response travels back to Spring which performs heuristic-driven OOD preprocessing.
-8. The response along with preprocessing result travels back to the frontend in JSON format.
-9. JavaScript groups adjacent predictions and builds the appropriate result interface based on the OOD preprocessing result.
+1. The frontend trims the text and sends it as JSON: `{ "text": "..." }`.
+2. `AbstractAnalysisController` rejects a missing or blank `text` with HTTP `400`.
+3. `AbstractAnalysisService` builds the same request and posts it to `ML_SERVICE_URL`.
+4. FastAPI runs the text through `preprocess_text`.
+5. For every sentence, the model gets three kinds of information: what it means, which characters it contains, and where it sits in the abstract.
+6. The ML service turns the probabilities into a main prediction and an alternative prediction.
+7. Spring Boot receives the result and runs the out-of-domain check.
+8. The combined result goes back to the frontend as JSON.
+9. JavaScript groups neighboring predictions and builds the result view, with a warning banner if the text was flagged as OOD.
 
 ---
 
@@ -349,50 +379,48 @@ I hope you are slowly starting to get the idea of how much potential a de-couple
 
 ![frontend cover image](static/docImages/frontend_cover.png)
 
-The frontend lives in [frontend/index.html](frontend/index.html), [frontend/script.js](frontend/script.js), and [frontend/styles.css](frontend/styles.css). It is intentionally lightweight: there is no framework application, package manager, bundler, or frontend compilation step.
+The frontend lives in [frontend/index.html](frontend/index.html), [frontend/script.js](frontend/script.js), and [frontend/styles.css](frontend/styles.css). I kept it deliberately simple: no framework, no package manager, no bundler, and no build step. You can read all of it in three files.
 
-### Interface behavior
+### What the page does
 
-The page provides:
-
-- A textarea for an abstract
-- An analyze button that remains disabled until text is entered
+- A text area for your abstract
+- An analyze button that stays disabled until you type something
 - A clear button
-- A loading indicator during the request
-- Three prewritten sample abstracts
+- A loading indicator while the request is running
+- A few prewritten sample abstracts, including one out-of-domain example
 - A structured result panel
 - An alternative predictions panel
 - A raw score table
 - A light/dark theme toggle
-- An educational limitations section
+- A short section on the model's limitations
 
 <img src="static/docImages/frontend_interface.png" alt="UI" style="padding-left: 30%; width: 50%;">  
 <br>
 
-### Rendering predictions
+### How predictions are shown
 
-The API returns one result object per sentence. The frontend walks through those objects in order and starts a new visual block whenever the predicted class changes. It does not reorder sentences and it does not ask the model to produce a new abstract.
+The API returns one result per sentence. The frontend goes through them in order and starts a new block whenever the predicted label changes. It never reorders sentences, and it never asks the model to write a new abstract.
 
-For each block, the frontend displays:
+Each block shows:
 
-- The predicted structural category
-- The original sentence text
-- A mean confidence calculated from the sentences in that block
+- The predicted label
+- The original sentences
+- The average confidence across the sentences in that block
 
-Alternative predictions use the same grouping logic but substitute `alternative.predictedClass` and `alternative.confidence`.
+The alternative predictions panel works the same way, but uses `alternative.predictedClass` and `alternative.confidence` instead.
 
-The raw score table displays the five returned scores in the order:
+The raw score table shows the five scores in this order:
 
 ```text
 BACKGROUND, CONCLUSIONS, METHODS, OBJECTIVE, RESULTS
 ```
 
-The model service returns confidence values as fractions between `0` and `1`. The frontend formats them as percentages for display. The raw score table shows values to six decimal places.
+The model service returns confidence as a fraction between `0` and `1`. The frontend shows it as a percentage, and the raw score table shows values to six decimal places.
 
 <img src="static/docImages/prim_alt_pred.png" alt="Primary & Alternate prediction UI" style="padding-left: 30%; width: 50%;">  
 <br>
 
-### API URL selection
+### Which API URL it uses
 
 When the page runs on `localhost` or `127.0.0.1`, JavaScript sends requests to:
 
@@ -400,17 +428,17 @@ When the page runs on `localhost` or `127.0.0.1`, JavaScript sends requests to:
 http://localhost:8080
 ```
 
-For GitHub Codespaces-style hostnames ending in `.app.github.dev`, the script changes the forwarded port in the hostname to `8080`. On other hosts it uses the current protocol and a derived backend hostname. This behavior is useful for development environments where frontend and backend ports are forwarded separately.
+On GitHub Codespaces-style hostnames (ending in `.app.github.dev`), the script swaps the forwarded port in the hostname for `8080`. On any other host, it uses the current protocol and a derived backend hostname. This is handy in development setups where the frontend and backend ports are forwarded separately.
 
-### Theme persistence
+### Remembering your theme
 
-The selected theme is stored under the browser local-storage key:
+Your theme choice is saved in the browser's local storage under this key:
 
 ```text
 structura-theme
 ```
 
-Any value other than `light` defaults to the dark theme on the next page load.
+Anything other than `light` falls back to the dark theme the next time the page loads.
 
 ---
 
@@ -418,38 +446,38 @@ Any value other than `light` defaults to the dark theme on the next page load.
 
 ![spring boot backend cover image](static/docImages/spring_back_cover.png)
 
-The backend is a Spring Boot application running on Java 21. Its main responsibility is request coordination rather than model inference.
+The backend is a Spring Boot application running on Java 21. Its job is to coordinate requests, not to run the model.
 
-### Technology
+### What it's built with
 
 - Java 21
 - Spring Boot `4.1.1`
 - Spring MVC
 - Spring `RestClient`
-- Jackson JSON serialization
+- Jackson for JSON
 - Maven Wrapper
-- Virtual threads enabled through application configuration
+- Virtual threads, turned on through application configuration
 
 ### Configuration
 
-The backend binds to all interfaces on port `8080`:
+The backend listens on all interfaces on port `8080`:
 
 ```properties
 server.port=8080
 server.address=0.0.0.0
 ```
 
-The ML URL is configurable through the `ML_SERVICE_URL` environment variable:
+The ML service URL can be set with the `ML_SERVICE_URL` environment variable:
 
 ```properties
 structura.ml-service-url=${ML_SERVICE_URL:http://localhost:8000/analyze}
 ```
 
-The default is appropriate when the ML service is running directly on the host. Docker Compose overrides it with the internal service hostname.
+The default works when the ML service runs directly on your machine. Docker Compose overrides it with the internal service name.
 
 ### CORS
 
-The backend allows cross-origin requests for `/api/**` from any origin and allows `GET`, `POST`, `PUT`, `DELETE`, and `OPTIONS`. This is convenient for local development and separately hosted frontends, but a production deployment should narrow the allowed origins when the public frontend URL is known.
+The backend accepts cross-origin requests for `/api/**` from any origin, and allows `GET`, `POST`, `PUT`, `DELETE`, and `OPTIONS`. That's convenient for local development and for frontends hosted elsewhere, but a production deployment should narrow the allowed origins once the public frontend URL is known.
 
 ---
 
@@ -459,15 +487,17 @@ The backend allows cross-origin requests for `/api/**` from any origin and allow
 
 All models were built with TensorFlow/Keras. <img src="static/docImages/Tensorflow_logo.svg.png" alt="TensorFlow logo" style="width: 2%;">
 
-Structura is a five-class sentence classifier for scientific abstracts. The deployed model combines semantic, character-level, and positional features. The training history below records the experiments used to select the production architecture, while the implementation details describe the model reconstructed by the inference service.
+Structura's model is a five-class sentence classifier. For each sentence it looks at three things at once: what the sentence says, how it's written (down to the characters), and where it sits in the abstract. It then combines them into one prediction.
+
+This section covers the dataset, the model itself, the experiments that led to it, and how well it does. I've kept the experiments in because they explain why the final model looks the way it does, and I explain the unfamiliar terms along the way.
 
 ### Dataset
 
 ![PubMed 20k dataset cover](static/docImages/pubmed_cover.png)
 
-The source of the dataset and my training goals come from this [**Research Paper**](https://www.google.com/url?q=https%3A%2F%2Farxiv.org%2Fabs%2F1710.06071)
+The dataset, and my training goals, come from this [**research paper**](https://arxiv.org/abs/1710.06071).
 
-Training used the PubMed 20k RCT dataset from the official [pubmed-rct repository](https://github.com/Franck-Dernoncourt/pubmed-rct). All experiments used the prepared PubMed 20k split with numbers replaced by `@` and the provided training, validation, and test partitions. Each sentence is labeled according to its rhetorical role in the abstract:
+I trained on the PubMed 20k RCT dataset from the official [pubmed-rct repository](https://github.com/Franck-Dernoncourt/pubmed-rct). Every experiment used the prepared PubMed 20k split, where numbers are replaced by `@`, along with its provided training, validation, and test partitions. Each sentence is labeled with its role in the abstract:
 
 - `BACKGROUND`
 - `OBJECTIVE`
@@ -475,7 +505,7 @@ Training used the PubMed 20k RCT dataset from the official [pubmed-rct repositor
 - `RESULTS`
 - `CONCLUSIONS`
 
-The partitions contain **180,040** training sentences, **30,212** validation sentences, and **30,135** test sentences. The training distribution was:
+The partitions contain **180,040** training sentences, **30,212** validation sentences, and **30,135** test sentences. In the training set, the classes were spread like this:
 
 | Class | Training sentences |
 |---|---:|
@@ -485,13 +515,13 @@ The partitions contain **180,040** training sentences, **30,212** validation sen
 | `BACKGROUND` | 21,727 |
 | `OBJECTIVE` | 13,839 |
 
-`OBJECTIVE` is the least represented class and was frequently confused with `BACKGROUND`.
+`OBJECTIVE` has the fewest examples, and the model often mixed it up with `BACKGROUND`.
 
-### Model purpose
+### What the model does
 
-The model performs five-class sentence classification. It receives an abstract as a collection of sentences and predicts one probability distribution per sentence.
+The model reads an abstract as a collection of sentences and gives each sentence a set of five probabilities, one per label.
 
-The five output classes are loaded from [ml_service/utilities/class_names.txt](ml_service/utilities/class_names.txt):
+The five labels are loaded from [ml_service/utilities/class_names.txt](ml_service/utilities/class_names.txt):
 
 ```text
 BACKGROUND
@@ -501,24 +531,25 @@ OBJECTIVE
 RESULTS
 ```
 
-The order of this file is significant because the model's output indices are converted into labels using the same order.
+The order in this file matters. The model's outputs are turned into labels using this same order, so changing it would mix up the labels.
 
-### Implemented architecture
+### The final architecture
 
 ![impl_architecture_cover](static/docImages/impl_architecture_cover.png)
 
-This research paper is the source of where my final model architecutre is inspired from:
-> [Neural Networks for Joint Sentence Classification in Medical Paper Abstracts by Dernoncourt, 2017](https://www.google.com/url?q=https%3A%2F%2Farxiv.org%2Fpdf%2F1612.05251.pdf)
+My final architecture is inspired by this paper:
+> [Neural Networks for Joint Sentence Classification in Medical Paper Abstracts by Dernoncourt, 2017](https://arxiv.org/abs/1612.05251)
 
-The inference service reconstructs the model in `load_structura_model()` rather than loading a complete executable model object directly. It extracts the vocabulary assets and weight file from `model/structura.keras`, rebuilds the layers, and then restores the trained weights. This is done inorder to make the loaded model take less memory than just simply loading it, because reconstructing through model weights gave me the ability to skip optimizer weights entirely.
+The inference service doesn't load the saved model directly. Instead, `load_structura_model()` rebuilds it: it pulls the vocabulary files and the weights out of `model/structura.keras`, recreates the layers, and then loads the trained weights back in. I did it this way to save memory. Rebuilding from the weights let me skip the optimizer weights entirely.
 
-This is a "multi-modal" architecture because the model has four input branches.
+The model has four input branches, and each one looks at a sentence in a different way:
+
 ```mermaid
 flowchart TD
     %% Character Branch
     char_inputs["char_inputs (InputLayer)"] --> text_vectorization["character vectorizer\n(TextVectorization)"]
     text_vectorization --> embedding["character embedder\n(Embedding)"]
-    embedding --> bidirectional["bidrectional\n(Bidirectional LSTM)"]
+    embedding --> bidirectional["bidirectional\n(Bidirectional LSTM)"]
     
     %% Token Branch (MiniLM)
     token_inputs["token inputs\n(InputLayer)"] --> token_embedder["token embedder\n(BertTextEmbedder with MiniLM backbone)"]
@@ -544,94 +575,92 @@ flowchart TD
     token_char_positional_embedding --> output_layer["output_layer\n(Dense)"]
 ```
 
-#### 1. Semantic text branch
+#### 1. Semantic branch: what the sentence means
 
 ![semantics text branch cover image](static/docImages/semantic_text_branch_cover.png)
 
-The semantic branch uses Keras Hub's `all_minilm_l6_v2_en` BERT backbone through a `BertTextEmbedder`.
+This branch uses the `all_minilm_l6_v2_en` model from Keras Hub (a small BERT-style model called MiniLM), through a `BertTextEmbedder`. Here's how it's set up:
 
-The configuration includes:
-
-- BERT tokenizer vocabulary extracted from the Keras archive
+- BERT tokenizer vocabulary, extracted from the Keras archive
 - Lowercase tokenization
 - Accent stripping
 - Word-piece suffix indicator `##`
-- `[UNK]` out-of-vocabulary token
+- `[UNK]` token for unknown words
 - Maximum sequence length of `256`
 - Round-robin truncation
 - Mean pooling
 - Normalized embeddings
-- Frozen embedder weights during inference
-- A dense projection of `128` units with ReLU activation
+- Embedder weights frozen during inference
+- A dense layer of `128` units with ReLU activation on top
 
-This branch provides a semantic representation of each sentence. It can represent relationships between words and phrases that are difficult to capture from individual characters alone.
+This branch gives the model a sense of what each sentence means, including how words and phrases relate to each other. That's hard to get from individual characters alone.
 
-#### 2. Character branch
+#### 2. Character branch: how the sentence is written
 
 ![char branch cover image](static/docImages/char_branch_cover.png)
 
-The character branch operates on a character-spaced version of each sentence:
+This branch reads a version of each sentence with its characters spaced out:
 
 ```text
 The study worked.
 ```
 
-becomes conceptually:
+becomes, roughly:
 
 ```text
 T h e   s t u d y   w o r k e d .
 ```
 
-The branch contains:
+It has:
 
 - A `TextVectorization` layer using the extracted character vocabulary
-- An embedding layer with output dimension `25`
-- A bidirectional LSTM with `32` units per direction
+- An embedding layer with output size `25`
+- A bidirectional LSTM with `32` units in each direction
 
-Character-level information can help preserve spelling, punctuation, abbreviations, and domain-specific word shapes.
+Looking at characters helps with spelling, punctuation, abbreviations, and the shapes of domain-specific words.
 
-#### 3. Sentence-position branch
+#### 3. Sentence-position branch: where the sentence sits
 
 ![sentence pos branch cover image](static/docImages/sentence_pos_branch_cover.png)
 
-Each sentence receives a zero-based position within the abstract. Positions are one-hot encoded with depth `15` and passed through a dense layer with `32` ReLU units.
+Each sentence gets a zero-based position in the abstract. That position is one-hot encoded with depth `15` and passed through a dense layer of `32` ReLU units.
 
-This gives the model information about where a sentence occurs. Position can be useful because structured abstracts often follow regular rhetorical ordering.
+This tells the model where a sentence appears, which is useful because abstracts tend to follow a fairly regular order.
 
-#### 4. Total-sentence-count branch
+#### 4. Total-sentence-count branch: how long the abstract is
 
 ![total sent count branch cover image](static/docImages/total_sent_count_branch_cover.png)
 
-The total number of sentences is represented as a one-hot feature with depth `20` and passed through another dense layer with `32` ReLU units.
+The total number of sentences is one-hot encoded with depth `20` and passed through another dense layer of `32` ReLU units.
 
-This gives the model context about the size of the abstract and the relative structural environment in which a sentence appears.
+This gives the model a feel for how long the abstract is, and so what kind of surroundings each sentence is in.
 
-This also means that abstracts somehow longer than 20 sentences, will be truncated down to 20, and will also be flagged by Structura as OOD (Out Of Domain).
+It also means that abstracts with more than 20 sentences get truncated down to 20, and Structura flags them as OOD (Out Of Domain).
 
-### Classification head
+### Putting it together: the classification head
 
 ![classification head cover image](static/docImages/classification_head_cover.png)
 
-The semantic and character representations are concatenated first. The combined representation is passed through:
+The meaning and character representations are joined first. The combined result then goes through:
 
 - A dense layer with `256` ReLU units
 - Dropout with rate `0.5`
-- Concatenation with the two positional representations
+- Concatenation with the two position representations
 - A final dense layer with `5` units and softmax activation
 
-The softmax output is a probability vector for one sentence. The highest-probability index becomes the primary prediction. The second-highest probability becomes the alternative prediction.
+The softmax output is a set of five probabilities for one sentence. The highest becomes the main prediction, and the second-highest becomes the alternative prediction.
 
-### Model asset loading
+### How the model is loaded
 
 ![model asset loading cover image](static/docImages/asset_loading_cover.png)
 
-At startup, the ML service expects:
+When the ML service starts, it expects to find:
 
 ```text
 ml_service/model/structura.keras
 ```
 
-The file is treated as a ZIP archive. The service extracts:
+That file is really a ZIP archive. The service pulls three things out of it:
 
 ```text
 assets/layers/bert_text_embedder_preprocessor/tokenizer/vocabulary.txt
@@ -639,15 +668,15 @@ assets/layers/text_vectorization/vocabulary.txt
 model.weights.h5
 ```
 
-The extracted files are written under `ml_service/model_extract/`. The model is loaded once when the FastAPI process starts. If model loading fails, the process prints the exception and exits instead of starting an unusable inference server.
+They're written to `ml_service/model_extract/`. The model is loaded once, when the FastAPI process starts. If loading fails, the process prints the error and exits, rather than running a server that can't make predictions.
 
 ---
 
-### Experimental protocol
+### How I ran the experiments
 
-The initial architecture experiments were performed on 10% of the training data to keep iteration times manageable. The experiments were used for architecture selection rather than as directly comparable full-data benchmarks. Validation was performed on the complete validation split where noted in the original experiments. The early models were developed with Keras 2; the production model was later rebuilt for Keras 3 and memory-constrained inference.
+I ran the early architecture experiments on 10% of the training data, so each try was quick. Treat those numbers as a way of choosing an architecture, not as full-data benchmarks. Validation used the complete validation split where the notebook says so. The early models were written in Keras 2, and I later rebuilt the production model for Keras 3 and low-memory inference.
 
-The documented token experiment used batches of 32 with TensorFlow datasets and prefetching.
+In the token model experiment, I used batches of 32 with TensorFlow datasets and prefetching.
 
 ---
 
@@ -664,96 +693,100 @@ The documented token experiment used batches of 32 with TensorFlow datasets and 
 | Hybrid model | Universal Sentence Encoder plus character BiLSTM | 73.48% | 73.11% |
 | Tribrid model | Token and character features plus sentence-position features | 83.28% | 83.20% |
 
-The tribrid model combined token semantics, character patterns, the sentence's position, and the abstract's total sentence count. Its initial held-out test evaluation achieved 82.57% accuracy, 82.43% precision, 82.57% recall, and 82.47% F1. These results motivated the later MiniLM-based redesign for deployment.
+The best of these was the tribrid model. It combined token meaning, character patterns, the sentence's position, and the abstract's total sentence count. On the held-out test set it reached 82.57% accuracy, 82.43% precision, 82.57% recall, and 82.47% F1. That was encouraging enough that I redesigned it around MiniLM for deployment.
 
 ---
 
-### MiniLM model evolution
+### Moving to MiniLM
 
 ![MiniLM model selection cover image](static/docImages/minilm_model_selection_cover.png)
 
-The deployed model uses Keras Hub's `all_minilm_l6_v2_en` backbone. It was selected because it provided stronger semantic representations with a much smaller serving footprint than the earlier Universal Sentence Encoder/SavedModel approach (~ 80 MB vs close to 1GB for the USE based model).
+For the deployed model I switched to MiniLM (`all_minilm_l6_v2_en` from Keras Hub). It gave stronger sentence representations in a much smaller package: about 80 MB, compared with close to 1 GB for the Universal Sentence Encoder version.
 
-| Experiment | Change | Validation result |
+| Experiment | Change | Result |
 |---|---|---:|
-| MiniLM 1 | Frozen MiniLM with character BiLSTM and positional branches; 10% training data | 83.62% accuracy, 0.9314 loss |
-| MiniLM 2 | Same architecture trained on the full training split for five epochs | 86.47% accuracy, 0.8849 loss |
-| MiniLM 3 | Added early stopping and learning-rate reduction | 86.40% accuracy, 0.8933 loss |
-| MiniLM 4 | Fine-tuned the MiniLM backbone | 89.45% accuracy, 0.8415 loss |
-| MiniLM 5 | Replaced the character BiLSTM with Conv1D | 89.15% accuracy after fine-tuning |
+| MiniLM 1 | Frozen MiniLM with character BiLSTM and positional branches; 10% training data | 83.62% validation accuracy, 0.9314 loss |
+| MiniLM 2 | Same architecture trained on the full training split for five epochs | 86.47% validation accuracy, 0.8849 loss |
+| MiniLM 3 | Added early stopping and learning-rate reduction | 86.40% validation accuracy, 0.8933 loss |
+| MiniLM 4 | Fine-tuned the MiniLM backbone | 89.45% validation accuracy, 0.8415 loss |
+| MiniLM 5 | Replaced the character BiLSTM with Conv1D | 89.15% validation accuracy after fine-tuning |
 | MiniLM 6 | Final full-data model with MiniLM and character BiLSTM | 89.04% test accuracy |
 
-The Conv1D character branch was retained as an ablation. The final production model uses the character BiLSTM because it performed better in the reported experiments.
+In MiniLM 5 I tried swapping the character BiLSTM for Conv1D, as an ablation (removing or swapping one part to see what changes). I kept the BiLSTM in the final model because it did better in my results.
 
 ---
 
 ### Final training configuration
 
-The final model uses categorical cross-entropy with label smoothing of `0.2`, an Adam optimizer, and a `0.5` dropout layer in the classification head. The fine-tuning configuration used Adam with a learning rate of `1e-3` and gradient `clipnorm=1.0`.
+Here are the settings I used to train the final model. A few of these terms might be new, so I explain each one right after the list.
 
-The callback configuration was:
+- **Loss:** categorical cross-entropy, with label smoothing of `0.2`
+- **Optimizer:** Adam, with a learning rate of `1e-3` for fine-tuning and gradient clipping (`clipnorm=1.0`)
+- **Dropout:** rate `0.5`, in the classification head
+- **Early stopping (`EarlyStopping`):** watches `val_accuracy`, with patience `3` and `restore_best_weights=True`
+- **Learning-rate reduction (`ReduceLROnPlateau`):** watches `val_loss`, with factor `0.5`, patience `2`, and a minimum learning rate of `1e-6`
 
-- `EarlyStopping` monitoring `val_accuracy`, with patience `3` and `restore_best_weights=True`
-- `ReduceLROnPlateau` monitoring `val_loss`, with factor `0.5`, patience `2`, and minimum learning rate `1e-6`
+#### Label smoothing
 
-Ok let me explain the jargon I just spilled here in simpler terms.
+*In one line: it stops the model from being overconfident.*
 
-#### **Label Smoothing**
-Prevents the model from being overly confident.
+The model ends by producing five probabilities, one per label. Normally, we train it towards the "perfect" answer. If a sentence is `BACKGROUND`, the target is `[1, 0, 0, 0, 0]`: 100% sure of one label and 0% for the rest. To get close to that, the model has to push its internal numbers to extreme values, and that makes it overconfident.
 
-For classification problems using softmax output layer, each confidence prediction is represented as a probability, in Structura's case, the output is a 5D vector for 5 classes.
-
-Now, the ideal case would be for the model to match the true labels, for example, if true label for a sentence is `[1. 0. 0. 0. 0]` (Sentence has `BACKGROUND` as its true label), the model will try to push itself to the hard limit of 1 (100% confidence), driving the logit weights to extreme positive or negative values trying to be highly accurate.
-
-Label smoothing prevents exactly that, by modifying these hard probability targets into *softer* targets, instead of targetting `[1, 0, 0, 0, 0]` for sentence A, label smoothing will change it to something like `[0.9, 0.025, 0.025, 0.025, 0.025]` depending on the smoothing factor selected.
-
-If you set the label_smoothing hyperparameter to α (where α is a float between 0 and 1), Keras modifies the true target distribution y_true using this internal formula:
+Label smoothing softens the target a little. Instead of aiming for exactly `[1, 0, 0, 0, 0]`, the model aims for something slightly less extreme. If you set the smoothing value `α` (a number between 0 and 1), Keras changes the true target like this:
 
 <img src="static/docImages/label_smoothing.png" alt="label smoothing formula" style="padding-left: 25%; width: 50%;">  
 <br>
 
 *(where K is the total number of classes)*
 
-So, continuing our example, we can plug in values in the forumula as such,
+Here's a worked example with my values:
+
 * `y_true` = `[1, 0, 0, 0, 0]` (`BACKGROUND`)
-* `α` = `0.2` (value which I used)
+* `α` = `0.2`
 * K = 5
 
-We get our target as `[0.84, 0.04, 0.04, 0.04, 0.04]` instead of `[1.0, 0.0, 0.0, 0.0, 0.0]`
+For the true class: 1 × (1 − 0.2) + 0.2 / 5 = 0.84. For each of the other classes: 0 × (1 − 0.2) + 0.2 / 5 = 0.04. So the target becomes `[0.84, 0.04, 0.04, 0.04, 0.04]` instead of `[1.0, 0.0, 0.0, 0.0, 0.0]`.
 
-While an alpha of `0.1` is standard, a more aggressive label smoothing factor of `0.2` was selected due to the inherent structure of the PubMed 20k dataset. Sequential sentences in medical abstracts often exhibit high class ambiguity at transition boundaries (e.g., Background vs. Objective). 
+A smoothing value of `0.1` is the usual choice. I went with `0.2` because neighboring sentences in medical abstracts are often hard to tell apart, especially `BACKGROUND` and `OBJECTIVE` at the point where one section turns into the next. I didn't want the model to be too sure of itself there. I was hoping for two benefits:
 
-By relaxing the targets to [0.84, 0.04, 0.04, 0.04, 0.04], I introduced two distinct advantages:
-1. Regularization: Prevented the distilled MiniLM backbone from overfitting or inflating its output logits on highly structured inputs.
-2. Balance: Successfully counteracted the potential dominance of the structural metadata inputs (line positions), forcing the network to retain a balanced reliance on both text semantics and position features.
+1. **Less overfitting.** It should stop the MiniLM backbone from memorizing very regular inputs and inflating its output numbers.
+2. **A better balance.** It should stop the model from leaning too hard on the position features, so it keeps using what a sentence says as well as where it sits.
 
-The resulting narrow gap between overall Accuracy `(89.04%)` and macro F1-score `(88.92%)` proves that the model did not suffer from underfitting or severe class imbalances under this regularization constraint.
+As a sanity check, the final accuracy (`89.04%`) and F1 score (`88.92%`) ended up very close to each other. That suggests the model wasn't doing well on some classes while ignoring others.
 
-#### **Gradient Clipnorm**
+#### Gradient clipping (`clipnorm`)
 
-Setting Clipnorm to a value (`1.0` in my case) means that the total magnitude (L2 norm) of the gradient vector for each weight matrix is capped at a maximum value of 1.0.
+While training, the model learns by nudging its weights using *gradients*: numbers that say which way to adjust each weight, and by how much. Sometimes a gradient gets huge, and one huge nudge can throw training off completely. The loss can even turn into `NaN` (Not a Number). This is called the **exploding gradient problem**, and models that work with text can be prone to it. Errors get multiplied over and over as they travel back through many steps or layers, so a slightly-too-large weight can snowball.
 
-If the calculated gradient's norm is greater than 1.0 during backpropagation, Keras will uniformly scale down all the individual gradients within that vector so that the overall norm becomome exactly 1.0.
+Setting `clipnorm=1.0` works like a speed limit. For each weight matrix, Keras measures the length (the L2 norm) of its gradient. If that length is over 1.0, Keras shrinks the whole gradient until its length is exactly 1.0. If it's already 1.0 or less, nothing changes. Even if one batch of text causes a big spike, the model only takes a small, safe step.
 
-Reason to use this here is that NLP models are highly prone to a phenomenon called **exploding  gradient problem.**
-
-NLP models process long sequential data (sentences/paragraphs). During backpropagation, error gradients are multiplied repeatedly across many time steps or attention layers. If the weights are even slightly large, these repeated multiplications cause the gradients to grow exponentially. This leads to wild weight updates, training divergence, and the dreaded NaN (Not a Number) loss errors.
-
-`clipnorm=1.0` acts as a mathematical "governor" or speed limit. It guarantees that even if a specific batch of text generates a massive, unstable error spike, the model will only take a controlled, safely sized step toward optimization.
-
-When clipnorm=1.0 is applied, the framework monitors the L2 norm (Euclidean length) of the gradient vector (g):
+Here's the rule:
 
 <img src="static/docImages/gradient_clipnorm.png" alt="gradient clipnorm formula" style="padding-left: 25%; width: 50%;">  
 <br>
 
-* If the norm is 0.75: Nothing changes. The gradients are applied exactly as calculated.
-* If the norm is 5.0: The entire vector is scaled down by dividing all values by 5.0.
+* If the norm is 0.75: nothing changes. The gradients are used exactly as calculated.
+* If the norm is 5.0: every value in the gradient is divided by 5.0.
 
-Because the whole vector is scaled down by the same ratio, the direction of the gradient optimization step stays exactly the same. Only the length (magnitude) is shortened.
+Because the whole gradient shrinks by the same ratio, it still points in the same direction. Only its length gets shorter.
+
+#### Dropout
+
+Dropout randomly switches off a share of the units in a layer on each training step. With a rate of `0.5`, that's half of them. The model can't lean on any single unit, which helps it generalize to sentences it hasn't seen.
+
+#### Early stopping
+
+If validation accuracy hasn't improved for `3` epochs in a row, training stops, and the model goes back to the best weights it had seen. That saves time and avoids overtraining.
+
+#### Learning-rate reduction
+
+If validation loss hasn't improved for `2` epochs, the learning rate is cut in half (down to a floor of `1e-6`). Smaller steps help the model settle in once it's close to a good solution.
 
 ---
 
-The final reported result was evaluated on the test split, which was **not** used during model selection:
+### Final test results
+
+I evaluated the final model on the test split, which I didn't use while choosing the model:
 
 | Metric | Final test result |
 |---|---:|
@@ -764,121 +797,132 @@ The final reported result was evaluated on the test split, which was **not** use
 
 ---
 
-### Confusion Matrix
+### Confusion matrix
 
 ![Confusion Matrix](static/docImages/confusion_matrix.png)
 
-The confusion matrix gives a class-by-class view of the final model's test performance. The rows represent the true labels, while the columns represent the labels predicted by the model. The large values along the diagonal show that the model learned the overall structure of scientific abstracts well, especially for `METHODS`, `RESULTS`, and `CONCLUSIONS`.
+A confusion matrix shows, class by class, where the model got things right and where it got mixed up. Rows are the true labels and columns are what the model predicted. The big numbers down the diagonal are good news: the model learned the overall structure of abstracts well, especially for `METHODS`, `RESULTS`, and `CONCLUSIONS`.
 
-- **BACKGROUND**: The model correctly classified 2,910 sentences. The main source of confusion was `OBJECTIVE` (499 sentences), followed by `METHODS` (177). This is understandable because background sentences and objective statements can appear next to each other at the beginning of an abstract and may share similar wording.
-- **CONCLUSIONS**: The model correctly classified 4,103 sentences. The most frequent misclassification was as `RESULTS` (397 sentences), which reflects the semantic similarity between reporting the final findings and interpreting those findings at the end of an abstract.
-- **METHODS**: This was the strongest-performing class, with 9,471 correct predictions. Only a small number of sentences were confused with `RESULTS` (278), `BACKGROUND` (75), or `OBJECTIVE` (44), showing that procedural language was generally distinctive enough for the model to recognize.
-- **OBJECTIVE**: This was the most difficult class for the model. Out of 2,333 true objective sentences, 1,432 were classified correctly, while 779 were predicted as `BACKGROUND`. Objective statements often occur immediately after the background and can use similar syntactic and contextual patterns, which explains this specific confusion.
-- **RESULTS**: The model correctly classified 8,917 sentences. The most common errors were predictions as `METHODS` (498) and `CONCLUSIONS` (285). This suggests that sentences describing experimental procedures or summarizing findings can sometimes overlap in vocabulary and structure.
+- **BACKGROUND:** 2,910 sentences were classified correctly. The most common mix-up was `OBJECTIVE` (499 sentences), then `METHODS` (177). That makes sense, since background and objective sentences often sit next to each other at the start of an abstract and can read alike.
+- **CONCLUSIONS:** 4,103 correct. The most frequent mistake was predicting `RESULTS` (397 sentences). Reporting the final findings and interpreting them can sound very similar at the end of an abstract.
+- **METHODS:** The strongest class, with 9,471 correct predictions. Only a few were confused with `RESULTS` (278), `BACKGROUND` (75), or `OBJECTIVE` (44). The language of procedures seems distinctive enough for the model to recognize.
+- **OBJECTIVE:** The hardest class. Of 2,333 true objective sentences, 1,432 were classified correctly and 779 were predicted as `BACKGROUND`. Objective statements usually come right after the background and can share a lot of its wording and context.
+- **RESULTS:** 8,917 correct. The most common mistakes were `METHODS` (498) and `CONCLUSIONS` (285). Sentences describing procedures or summarizing findings can overlap in vocabulary and structure.
 
-Overall, the matrix supports the final test accuracy of `89.04%` and macro F1 score of `88.92%`. Most errors occur between neighboring or semantically related sections rather than between unrelated classes. The main area for improvement is distinguishing `OBJECTIVE` from `BACKGROUND`, while the high number of correct `METHODS` and `RESULTS` predictions shows that the model handles the more explicitly structured parts of abstracts particularly well.
+Overall, most mistakes happen between neighboring or related sections, not between unrelated ones. The matrix matches the final test accuracy of `89.04%` and F1 score of `88.92%`. The thing I'd most like to improve is telling `OBJECTIVE` apart from `BACKGROUND`. `METHODS` and `RESULTS` are handled well.
 
 ---
 
 ### Out-of-domain detection
 
-Out-of-domain (OOD) data is input that does not match the kind of data a model was trained to understand. For Structura, the intended domain is English medical and clinical research abstracts, especially abstracts whose sentences follow the rhetorical patterns represented in the PubMed 20k RCT training data. A robotics abstract, a general news article, a very short fragment, or a long block of unrelated prose can still be sent through the model, but it is not necessarily a reliable match for that domain.
+Out-of-domain (OOD) just means "not the kind of text the model was trained on." Structura is built for English medical and clinical research abstracts, especially ones that read like the PubMed 20k RCT abstracts. A robotics abstract, a news article, a very short fragment, or a long block of unrelated prose can still be run through the model, but the results won't be as trustworthy.
 
-This distinction matters because Structura's classifier does not have an `UNKNOWN` output class. Every sentence is assigned one of the five known roles, even when none of those roles is a good fit. The softmax layer must distribute a total probability of `1` across `BACKGROUND`, `OBJECTIVE`, `METHODS`, `RESULTS`, and `CONCLUSIONS`; it cannot say that the text is outside the training domain. Consequently, an OOD abstract can receive plausible-looking labels and high individual scores. Those labels should not be interpreted as evidence that the abstract is a medical research paper or that its rhetorical structure was identified reliably.
+There's a catch: the model has no `UNKNOWN` label. It always has to spread its probability across `BACKGROUND`, `OBJECTIVE`, `METHODS`, `RESULTS`, and `CONCLUSIONS`, so it can't say "this doesn't look like an abstract." That means OOD text can still come back with confident-looking labels. Those labels aren't proof that the text is a medical paper, or that its structure was read properly.
 
-Structura therefore performs a lightweight OOD check after the FastAPI model has returned its sentence predictions. This is not a second neural network and it does not change the sentence labels. It is a set of document-level heuristics implemented in the Spring Boot backend, where the results from all sentences are available together. The backend places the result in the `isLikelyOOD` field of the public response, and the frontend uses that boolean to show a warning while still displaying the analysis.
+So I added a lightweight check after the model has answered. It isn't another neural network, and it never changes your labels. It's a few simple rules in the Spring Boot backend, where all the sentence results are available together. The result goes into the `isLikelyOOD` field, and the frontend uses it to show a warning above the analysis, which is still displayed.
 
-#### How the Spring Boot OOD classification works
+#### How the check works
 
-The logic is implemented in `backend/src/main/java/com/aaryan/structura/OodClassifier.java`. It receives the list of `SentPredDTO` objects returned by the ML service. Each prediction contains the sentence, its primary `predictedClass`, and the primary class's `confidence`. The classifier returns `true` as soon as any of the following checks indicates that the document may not be a supported abstract:
+The logic lives in `backend/src/main/java/com/aaryan/structura/OodClassifier.java`. It looks at the list of `SentPredDTO` objects returned by the ML service (each has the sentence, the main `predictedClass`, and its `confidence`). It returns `true` as soon as any of these three things looks off:
 
-1. **Sentence-count check**: the prediction list must contain at least `3` and at most `30` sentences. Fewer than three sentences provide too little document-level structure for a meaningful abstract analysis. More than thirty sentences exceed the range the application treats as a normal abstract and may also interact poorly with the model's fixed positional feature representation. Both boundaries are inclusive, so exactly `3` and exactly `30` sentences pass this check.
+1. **Sentence count.** The list must contain at least `3` and at most `30` sentences, and both limits are inclusive. Fewer than three sentences gives too little structure to analyze. More than thirty is beyond a normal abstract and may not fit the model's fixed position features.
 
-2. **Mean-confidence check**: the classifier calculates the arithmetic mean of the primary confidence values:
+2. **Mean confidence.** The classifier averages the main confidence of every sentence:
 
    ```text
    mean confidence = (confidence_1 + confidence_2 + ... + confidence_N) / N
    ```
 
-   If this mean is below `0.45`, the document is flagged. This uses the confidence of the winning class for each sentence, not the alternative score and not the average of every value in `rawScores`. A low mean suggests that the model is repeatedly uncertain about which of the five learned roles best describes the input. A mean of exactly `0.45` passes because the implementation uses a strict `< 0.45` comparison.
+   If the mean is below `0.45`, the text is flagged. A mean of exactly `0.45` passes, because the check is a strict `< 0.45`. This uses only the confidence of each sentence's winning label, not the alternative score and not the average of `rawScores`. A low average means the model keeps being unsure about which label fits.
 
-3. **Prediction-volatility check**: the classifier compares each sentence's primary class with the class assigned to the immediately preceding sentence. It counts the changes and divides by the number of adjacent pairs:
+3. **Label changes.** The classifier compares each sentence's label with the one before it, counts the changes, and divides by the number of neighboring pairs:
 
    ```text
    change rate = number of adjacent class changes / (N - 1)
    ```
 
-   If the rate is at least `0.67`, the document is flagged. Repeatedly changing between structural roles can indicate that the model is forcing arbitrary labels onto text whose organization does not resemble the training domain. A stable sequence can still be wrong, so this check is a signal rather than proof of in-domain content.
+   If the rate is `0.67` or higher, the text is flagged. A real abstract tends to move through its sections in order, so labels that keep jumping around suggest the model is guessing. A steady sequence can still be wrong, so this is a hint rather than proof.
 
-The checks are combined with logical OR, not voting. A document is considered likely OOD if its sentence count is invalid, its mean confidence is below the threshold, or its label-change rate reaches the volatility threshold. A `null` prediction list is also treated as OOD because there is no valid model output to evaluate. An empty list is flagged by the sentence-count rule. For one or more sentences, the volatility check itself is skipped when there is no adjacent pair, but the sentence-count rule still prevents such a result from passing as a valid abstract.
+The checks are combined with OR, not voting. Failing any one of them is enough to flag the text. A `null` list counts as OOD, because there's nothing to evaluate. An empty list is caught by the sentence-count rule. With a single sentence there are no neighboring pairs, so the label-change check is skipped, but the sentence-count rule still flags it.
 
-#### Where the flag is added
+#### Where the flag gets added
 
-The `AbstractAnalysisService` calls the ML service first and preserves its sentence predictions and raw output. It then invokes `oodClassifier.isLikelyOOD(response.data())` and constructs the browser-facing `AnalyzeResponseDTO` with that boolean. This keeps the ML service focused on preprocessing and inference while the Spring Boot boundary owns the application-level interpretation of the response.
+`AbstractAnalysisService` calls the ML service first and keeps its sentence predictions and raw output. Then it calls `oodClassifier.isLikelyOOD(response.data())` and builds the `AnalyzeResponseDTO` that goes to the browser, with the flag included. That way, the ML service only worries about preprocessing and inference, and the Spring Boot layer decides how to interpret the results.
 
-The frontend does not discard or relabel predictions when `isLikelyOOD` is `true`. Instead, it displays the message that the text looks different from the medical abstracts Structura usually reads and explains that the structural labels may be less accurate. This is intentional: the heuristics provide a warning about reliability, not a mathematically definitive OOD probability or a hard request rejection. The API can therefore remain useful for inspection while making the limitation visible to the user.
+When `isLikelyOOD` is `true`, the frontend keeps every prediction as it is and shows a message saying the text looks different from the medical abstracts Structura usually reads, so the labels may be less accurate. I did this on purpose. It's a heads-up about reliability, not a verdict, and not a rejection of your input.
 
 <img src="static/docImages/ood_flagged.png" alt="OOD flag on frontend" style="padding-left: 30%; width: 50%;">  
 <br>
 
-These checks should be understood as conservative indicators, not a guarantee of domain membership. An in-domain abstract with unusual wording may be flagged, while an OOD document that imitates the style and vocabulary of a clinical abstract may pass. The thresholds (`0.45`, `0.67`, `3`, and `30`) are application heuristics and should be recalibrated against a labelled mixture of in-domain and OOD abstracts if the detector becomes a critical production decision.
+Please treat these checks as hints. An unusual but genuine abstract might get flagged, and a non-medical text written in the style of a clinical abstract might slip through. The thresholds (`0.45`, `0.67`, `3`, and `30`) are my own rules of thumb. If the detector ever matters for something important, they should be tuned against a labeled mix of in-domain and OOD abstracts.
 
 ---
 
 ### Deployment considerations
 
-The earlier Keras 2 SavedModel approach created a large model (~990MB) and could consume several gigabytes of memory during loading. That was unsuitable for the intended low-memory deployment environment, and for a live streamlit community cloud deployment.
+My first version of the model was a Keras 2 SavedModel of about 990 MB, and it could use several gigabytes of memory while loading. That was far too heavy for the low-memory environment I was aiming for, including the live Streamlit Community Cloud deployment.
 
-The MiniLM redesign reduced the model assets to approximately 80 MB before the final archive and enabled a Keras 3-compatible reconstruction from the stored vocabularies and `model.weights.h5` weights.
+The MiniLM redesign brought the model assets down to about 80 MB before the final archive. It also let me rebuild the model in Keras 3 from the stored vocabularies and the `model.weights.h5` weights.
 
-The production loader extracts the tokenizer vocabulary, character vocabulary, and weights from the `.keras` archive, reconstructs the architecture, freezes the MiniLM embedder for inference, and restores the trained weights. Inference is configured for CPU use. The loader currently passes `skip_mismatch=True` to `load_weights`; this keeps startup from failing on a mismatch but can conceal incomplete weight restoration and should be audited when changing the architecture.
+At startup, the loader:
 
-### Known Limitations
+1. Extracts the tokenizer vocabulary, the character vocabulary, and the weights from the `.keras` archive
+2. Rebuilds the architecture
+3. Freezes the MiniLM embedder for inference
+4. Restores the trained weights
+
+Inference runs on the CPU.
+
+One thing to keep in mind: the loader currently passes `skip_mismatch=True` to `load_weights`. That stops startup from failing when some weights don't match, but it can also hide the fact that some weights weren't restored. If you change the architecture, check that all the weights actually load.
+
+### Known limitations
 
 ![known limitations cover](static/docImages/known_limit_cover.png)
 
-- Position features use fixed one-hot depths of `15` for the zero-based sentence position and `20` for the encoded total-line value. Very long abstracts can exceed these ranges and therefore be truncated.
-- The model is most likely to confuse `OBJECTIVE` and `BACKGROUND`, partly reflecting the training imbalance.
-- Behavior on non-scientific text, out-of-domain abstracts, and sentences containing multiple rhetorical roles was not systematically evaluated.
-- The model always selects one of five classes; there is no explicit `UNKNOWN` or `MIXED` class.
-- A sentence can contain more than one rhetorical role, but the output allows only one primary and one alternative class.
-- Sentence boundaries depend on spaCy's sentencizer and may not match the formatting or segmentation expected by every abstract.
-- Softmax confidence should not automatically be interpreted as calibrated probability of correctness.
-- The current backend does not define a custom error response for downstream ML failures.
-- CORS is configured broadly for development and should be restricted for a public deployment.
+Structura isn't perfect, and I'd rather you know where it struggles:
+
+- The position features have fixed sizes: `15` for a sentence's position and `20` for the total sentence count. Very long abstracts can go past these and get truncated.
+- The model most often mixes up `OBJECTIVE` and `BACKGROUND`, partly because of the training imbalance.
+- I haven't systematically tested non-scientific text, out-of-domain abstracts, or sentences that do more than one job.
+- It always picks one of five labels. There's no `UNKNOWN` or `MIXED` label.
+- A sentence can have more than one role, but the output only has one main and one alternative label.
+- Sentence splitting relies on spaCy's sentencizer, which may not match the formatting of every abstract.
+- The confidence numbers aren't calibrated. A score of 90% doesn't mean the model is right 90% of the time.
+- The backend doesn't have a custom error response for when the ML service fails.
+- CORS is wide open for development and should be restricted for a public deployment.
 
 ---
 
 ## Inference Preprocessing
 
-The inference pipeline is implemented in [ml_service/utilities/utils.py](ml_service/utilities/utils.py).
+The preprocessing pipeline lives in [ml_service/utilities/utils.py](ml_service/utilities/utils.py).
 
 ### Sentence splitting
 
 ![sentence splitting cover](static/docImages/sentence_split_cover.png)
 
-The service creates a lightweight English spaCy pipeline and adds spaCy's `sentencizer`. It uses the resulting sentence spans as the model's prediction units.
+The service creates a lightweight English spaCy pipeline and adds spaCy's `sentencizer`. The sentences it finds become the units the model predicts on.
 
-This is deliberately different from splitting only on newline characters or using a regular expression. Sentence boundaries are determined by the sentencizer, so punctuation and spacing affect how the input becomes a list of sentences.
+I deliberately didn't split on newlines or with a regular expression. The sentencizer decides where sentences end, so punctuation and spacing in your text affect how it gets split.
 
 ### Positional features
 
 ![positional features cover](static/docImages/pos_feat_cover.png)
 
-For an abstract containing `N` sentences, each sentence receives:
+For an abstract with `N` sentences, each sentence gets:
 
-- A zero-based line number from `0` to `N - 1`
+- A zero-based line number, from `0` to `N - 1`
 - A total-line value of `N - 1`
 
-The line numbers are one-hot encoded with depth `15`. The total-line values are one-hot encoded with depth `20`.
+Line numbers are one-hot encoded with depth `15`, and total-line values with depth `20`.
 
-These fixed depths are model design constraints. Very long abstracts may produce values outside the intended one-hot ranges and should be tested before being treated as fully supported input.
+These fixed sizes are part of how the model was designed. Very long abstracts can fall outside them, so test them before relying on the results.
 
 ### Character features
 
 ![char features cover](static/docImages/char_feat_cover.png)
 
-Each sentence is converted to a string containing its characters separated by spaces. The character sequence is then passed through the stored vocabulary and embedding layers.
+Each sentence is turned into a string with its characters separated by spaces. That string then goes through the stored vocabulary and embedding layers.
 
 ### Prediction formatting
 
@@ -886,13 +930,13 @@ Each sentence is converted to a string containing its characters separated by sp
 
 For each sentence, the ML service:
 
-1. Runs the model and obtains five probabilities.
-2. Selects the highest-probability class as `predictedClass`.
-3. Selects the second-highest class as `alternative.predictedClass`.
-4. Returns the corresponding probabilities as `confidence` values.
-5. Returns the complete five-value vector as `rawScores`.
+1. Runs the model and gets five probabilities.
+2. Picks the highest one as `predictedClass`.
+3. Picks the second-highest as `alternative.predictedClass`.
+4. Returns those probabilities as the `confidence` values.
+5. Returns all five as `rawScores`.
 
-Confidence values in the JSON response are decimals such as `0.9234`, not integer percentages. The frontend multiplies them by `100` when it displays a mean confidence tooltip.
+Confidence values in the JSON are decimals like `0.9234`, not whole-number percentages. The frontend multiplies them by `100` when it shows the average confidence in a tooltip.
 
 ---
 
@@ -902,7 +946,7 @@ Confidence values in the JSON response are decimals such as `0.9234`, not intege
 
 ### Public endpoint: `POST /api/analyze`
 
-This is the endpoint used by the browser. It is served by Spring Boot on port `8080`.
+This is the endpoint the browser uses. Spring Boot serves it on port `8080`.
 
 #### Request
 
@@ -927,7 +971,7 @@ curl -X POST http://localhost:8080/api/analyze \
 
 #### Response
 
-The response is passed through from the ML service and has this shape:
+The response comes from the ML service, plus one extra field (`isLikelyOOD`) that Spring Boot adds. It looks like this:
 
 ```json
 {
@@ -949,15 +993,15 @@ The response is passed through from the ML service and has this shape:
 }
 ```
 
-`rawOutput` is currently a string representation of the model probability array. It is preserved in the response for inspection, while `data` contains the structured objects used by the frontend.
+`rawOutput` is currently the model's probability array printed as a string. I keep it so you can inspect it, while `data` holds the structured objects the frontend uses.
 
-`isLikelyOOD` is `true` when any of the following backend checks indicates that the input is likely outside the model's supported domain:
+`isLikelyOOD` is `true` when any of these backend checks suggests the input is outside what the model supports:
 
-- Mean primary sentence confidence is below `0.45`.
-- The adjacent predicted-class change rate is at least `0.67`.
-- The parsed sentence count is fewer than `3` or greater than `30`.
+- The mean confidence of the main predictions is below `0.45`.
+- The rate of label changes between neighboring sentences is at least `0.67`.
+- The number of sentences is fewer than `3` or more than `30`.
 
-The sentence count uses the same sentence-level results produced by the FastAPI service. The frontend can use this boolean to choose the appropriate user-facing message.
+The sentence count comes from the same sentence-level results the FastAPI service produced. The frontend uses this flag to pick the right message to show.
 
 #### Request validation
 
@@ -967,7 +1011,7 @@ The Spring controller returns HTTP `400 Bad Request` when:
 - The `text` property is missing
 - The `text` property is blank
 
-The controller does not impose a documented maximum character count. The model's positional feature depths still impose practical constraints on very long abstracts.
+I haven't set a maximum character count. The model's fixed position features still limit how long an abstract can usefully be.
 
 ### Internal endpoint: `POST /analyze`
 
@@ -979,7 +1023,7 @@ curl -X POST http://localhost:8000/analyze \
   -d '{"text":"This study evaluated a new treatment."}'
 ```
 
-It accepts the same request shape and returns the same response schema. In a deployed environment, this service should generally remain private and receive traffic from the Spring backend over the internal network.
+It takes the same request and returns the same response shape. In a real deployment, this service should stay private and only receive traffic from the Spring backend over the internal network.
 
 ### ML health endpoint: `GET /`
 
@@ -995,18 +1039,18 @@ Expected response:
 }
 ```
 
-Docker Compose uses this endpoint for the ML service health check.
+Docker Compose uses this endpoint to check that the ML service is healthy.
 
 ---
 
 ## Docker Compose Deployment
 
-The recommended local setup uses [docker-compose.yml](docker-compose.yml) to run all three services.
+The easiest way to run everything is [docker-compose.yml](docker-compose.yml), which starts all three services.
 
-| Service | Container port | Host port | Responsibility |
+| Service | Container port | Host port | What it does |
 |---|---:|---:|---|
 | `frontend` | `80` | `3000` | Serves the browser UI through Nginx |
-| `backend` | `8080` | `8080` | Public JSON API and request forwarding |
+| `backend` | `8080` | `8080` | Public JSON API, and forwards requests to the ML service |
 | `ml-service` | `8000` | `8000` | FastAPI inference service |
 
 ### Start the application
@@ -1017,23 +1061,23 @@ From the repository root:
 docker compose up --build
 ```
 
-Open the application at:
+Then open:
 
 ```text
 http://localhost:3000
 ```
 
-The first build or startup can take time because the ML image installs TensorFlow and Keras Hub, and model initialization happens when the FastAPI process starts.
+The first build can take a while. The ML image has to install TensorFlow and Keras Hub, and the model loads when the FastAPI process starts. So don't worry if the first run feels slow.
 
-### Compose startup order
+### Startup order
 
-The backend waits for the ML service to become healthy. The frontend waits for the backend to become healthy. The intended startup path is therefore:
+The backend waits for the ML service to be healthy, and the frontend waits for the backend. So the order is:
 
 ```text
 ml-service -> backend -> frontend
 ```
 
-The backend receives this Compose-only environment variable:
+Docker Compose gives the backend this environment variable:
 
 ```text
 ML_SERVICE_URL=http://ml-service:8000/analyze
@@ -1051,7 +1095,7 @@ docker compose logs -f
 # Follow only ML service logs
 docker compose logs -f ml-service
 
-# Inspect service status
+# Check service status
 docker compose ps
 
 # Stop and remove the Compose containers
@@ -1061,35 +1105,40 @@ docker compose down
 docker compose build --no-cache
 ```
 
-### Container details
+### What's inside the containers
 
-The backend uses a multi-stage Java image. Maven builds the application with Eclipse Temurin JDK 21, and the runtime image contains only the JRE and packaged application JAR.
+The backend uses a multi-stage Java image. Maven builds the app with Eclipse Temurin JDK 21, and the final image contains only the JRE and the packaged JAR.
 
-The ML service uses a Python 3.11 virtual environment created in a builder stage. The runtime image receives that environment and the complete `ml_service` directory, including the model archive, extracted assets, utility module, and class names.
+The ML service uses a Python 3.11 virtual environment created in a builder stage. The final image gets that environment and the whole `ml_service` directory, including the model archive, extracted assets, utility module, and class names.
 
-The frontend copies its three static assets into an Nginx Alpine image. Nginx falls back to `index.html` for unknown paths, allowing the single-page interface to load correctly.
+The frontend copies its three static files into an Nginx Alpine image. Nginx falls back to `index.html` for unknown paths, so the single-page interface loads correctly.
 
 ### Deployment checklist
 
 ![Deployment checklist cover](static/docImages/depl_checklist_cover.png)
 
-Before deploying outside local development, fill in and verify:
+I haven't deployed the full stack anywhere yet (that's what the Streamlit demo is for), so some of these are still blanks for me. Think of this as a checklist I'm working through, and one you can use if you take Structura online yourself.
 
-- **Hosting platform:** TODO
-- **Public frontend URL:** TODO
-- **Backend URL or reverse proxy route:** TODO
-- **CPU and memory allocation:** TODO
-- **Expected model startup time:** TODO
-- **Whether port `8000` is private:** Recommended: yes
-- **Allowed CORS origins:** Replace the current wildcard with the production frontend origin
-- **Health check behavior:** Confirm the platform allows enough startup time for TensorFlow model loading
-- **Model asset storage:** Confirm `model/structura.keras` is included in the deployed image
+**Things I still need to decide:**
+
+- [ ] **Hosting platform:** where will all three services run?
+- [ ] **Public frontend URL:** what address will people visit?
+- [ ] **Backend URL or reverse proxy route:** how will the frontend reach the Spring Boot API?
+- [ ] **CPU and memory:** how much does the ML service need to run comfortably?
+- [ ] **Model startup time:** how long does the model take to load on that hardware?
+
+**Things to double-check before going public:**
+
+- [ ] **Keep port `8000` private.** Only the Spring backend should be able to reach the ML service.
+- [ ] **Narrow CORS.** Replace the wildcard with your production frontend's origin.
+- [ ] **Give the health check enough time.** Loading the model takes a while, and the platform shouldn't give up on the ML service too early.
+- [ ] **Ship the model.** Make sure `model/structura.keras` is included in the deployed image.
 
 ---
 
 ## Local Development Without Docker
 
-Docker Compose is the easiest way to run the complete system. Individual services can also be run manually when debugging.
+Docker Compose is the easiest way to run everything, but you can also run each service by hand, which is handy for debugging.
 
 ### Start the ML service
 
@@ -1101,7 +1150,7 @@ pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-The model archive must be present at `ml_service/model/structura.keras` before startup.
+The model archive needs to be at `ml_service/model/structura.keras` before you start.
 
 ### Start the backend
 
@@ -1112,7 +1161,7 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-By default, the backend forwards to `http://localhost:8000/analyze`. To use a different ML service:
+By default, the backend forwards to `http://localhost:8000/analyze`. To point it somewhere else:
 
 ```bash
 ML_SERVICE_URL=http://localhost:8000/analyze ./mvnw spring-boot:run
@@ -1120,22 +1169,22 @@ ML_SERVICE_URL=http://localhost:8000/analyze ./mvnw spring-boot:run
 
 ### Serve the frontend
 
-In a third terminal, after the backend is available:
+In a third terminal, once the backend is up:
 
 ```bash
 cd frontend
 python3 -m http.server 3000
 ```
 
-The frontend's localhost behavior sends requests to `http://localhost:8080`.
+On localhost, the frontend sends requests to `http://localhost:8080`.
 
-This simple server is useful for development. The production-like static server is the Nginx container defined by [frontend/Dockerfile](frontend/Dockerfile).
+This simple server is fine for development. The production-like option is the Nginx container defined in [frontend/Dockerfile](frontend/Dockerfile).
 
 ---
 
 ## Testing
 
-The repository currently contains a Spring Boot context smoke test:
+The backend has a Spring Boot context smoke test (`StructuraApplicationTests`) and tests for the OOD classifier (`OodClassifierTest`). To run them:
 
 ```bash
 cd backend
@@ -1148,67 +1197,67 @@ cd backend
 
 ### The frontend loads but analysis fails
 
-Check that the backend is running on port `8080` and that the browser is using the expected API URL. Then inspect:
+Check that the backend is running on port `8080` and that the browser is using the API URL you expect. Then look at the backend logs:
 
 ```bash
 docker compose logs -f backend
 ```
 
-### The backend cannot reach the ML service
+### The backend can't reach the ML service
 
-Inside Docker Compose, `ML_SERVICE_URL` must use the service name:
+Inside Docker Compose, `ML_SERVICE_URL` has to use the service name:
 
 ```text
 http://ml-service:8000/analyze
 ```
 
-`localhost` inside the backend container refers to the backend container itself, not the ML container.
+`localhost` inside the backend container means the backend container itself, not the ML container.
 
 ### The ML service exits during startup
 
-Inspect its logs:
+Look at its logs:
 
 ```bash
 docker compose logs ml-service
 ```
 
-Common causes include missing `model/structura.keras`, incompatible model assets, insufficient memory, or a dependency installation failure.
+The usual suspects are a missing `model/structura.keras`, incompatible model assets, not enough memory, or a failed dependency install.
 
-### Compose waits indefinitely for the backend
+### Compose keeps waiting for the backend
 
-The backend health check depends on port `8080` accepting connections. Check backend logs and confirm that the Java application started successfully. If the image lacks a shell feature required by the health check in a particular runtime environment, the health check may need to be adapted for that environment.
+The backend health check depends on port `8080` accepting connections. Check the backend logs and confirm the Java app started. If your runtime environment doesn't have a shell feature the health check needs, you may have to adapt the health check.
 
 ### Blank input returns an error
 
-This is expected. The Spring controller rejects missing or whitespace-only text with HTTP `400`.
+That's expected. The Spring controller rejects missing or whitespace-only text with HTTP `400`.
 
 ### Predictions look unreliable for long abstracts
 
-The model uses fixed one-hot feature depths of `15` for sentence positions and `20` for total-line values. Long inputs should be evaluated against those constraints before being considered supported production input.
+The model uses fixed one-hot sizes of `15` for sentence positions and `20` for total-line values. Test long inputs against those limits before relying on them.
 
 ### CORS errors appear in the browser
 
-The backend currently allows all origins for `/api/**`, so a CORS error usually indicates that the request is going to the wrong host or port, or that a reverse proxy is changing the response headers. Confirm the frontend's derived API URL and inspect the browser network request.
+The backend currently allows all origins for `/api/**`, so a CORS error usually means the request is going to the wrong host or port, or that a reverse proxy is changing the response headers. Check the frontend's derived API URL and look at the request in your browser's network tab.
 
 ---
 
 ## Design Decisions
 
-### Sentence-level rather than document-level classification
+### Sentence-level rather than document-level
 
-Classifying each sentence preserves the original wording and makes the result inspectable. Users can see which exact sentence led to each structural label instead of receiving only a document-level summary.
+Labeling each sentence keeps the original wording and makes the result easy to inspect. You can see exactly which sentence led to each label, instead of getting only a summary of the whole document.
 
-### Hybrid text representation
+### A mix of ways to read a sentence
 
-The model combines a pretrained semantic representation with character-level and positional signals. The semantic branch provides contextual language information, the character branch captures local form, and the positional branches provide abstract-level structure.
+The model combines a pretrained model that understands meaning, a character-level view, and position signals. The first captures what the language means, the second captures local details like spelling and punctuation, and the third gives it a sense of the abstract's overall structure.
 
 ### Separate Java and Python services
 
-Spring Boot provides a conventional application boundary for the browser API, while FastAPI keeps the TensorFlow runtime close to the model code. Docker Compose makes the network connection explicit and repeatable.
+Spring Boot gives the browser API a conventional home, while FastAPI keeps TensorFlow right next to the model code. Docker Compose makes the connection between them explicit and repeatable.
 
-### Raw scores are preserved
+### Keeping the raw scores
 
-The API returns the full five-class score vector instead of exposing only the winning label. This makes the result easier to inspect and provides a foundation for later calibration, thresholding, or evaluation tooling.
+The API returns all five scores instead of only the winning label. That makes results easier to inspect, and it leaves room for things like calibration, thresholding, or evaluation tooling later.
 
 ---
 

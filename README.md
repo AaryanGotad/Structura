@@ -856,6 +856,27 @@ When `isLikelyOOD` is `true`, the frontend keeps every prediction as it is and s
 
 Please treat these checks as hints. An unusual but genuine abstract might get flagged, and a non-medical text written in the style of a clinical abstract might slip through. The thresholds (`0.45`, `0.67`, `3`, and `20`) are my own rules of thumb. If the detector ever matters for something important, they should be tuned against a labeled mix of in-domain and OOD abstracts.
 
+#### Why `3` to `20` sentences, `0.45`, and `0.67`?
+
+These thresholds are rules of thumb. I picked them as reasonable starting points, and I didn't tune them on data. Here's the thinking behind each one.
+
+**Why 3 to 20 sentences?**
+With fewer than 3 sentences there isn't enough of a story (a beginning, a middle, and an end) to analyze. The upper limit of 20 matches the size of the total-lines vector the model was trained with (see [the FAQ on 15 vs 20 slots](#why-does-line-position-use-15-slots-but-total-lines-use-20)). Past 20, that vector is all zeros, so the model loses part of the information it relies on.
+
+**Why a mean confidence of at least `0.45`?**
+With five labels, a model that was just guessing would give each one about `0.20`, so `0.45` is more than twice chance level. I also trained with label smoothing, which means the target for the right label was `0.84`, not `1.0`, so even a very sure prediction doesn't sit near `1.0`. A cutoff of `0.45` lands well between "guessing" and "very sure". If the average over the whole abstract falls below it, the model is unsure about most of the sentences, which is what I'd expect from text that doesn't look like what it learned from.
+
+**Why a label change rate below `0.67`?**
+Abstracts mostly move through their sections in order, so the labels come in blocks: a few `BACKGROUND` sentences, then `METHODS`, and so on. An abstract that goes through all five sections once, in order, changes label only four times, however long it is. For a 10-sentence abstract that's 4 changes across 9 neighboring pairs, a rate of about `0.44`. A rate of `0.67` means two out of every three neighboring sentences get a different label, which is much more jumping around than a normal abstract does, and looks more like the model guessing.
+
+**Where these checks can go wrong:**
+
+- **Very short abstracts.** If all five sections appear once each, in order, the rate is 4 out of (N − 1). For abstracts of 6 sentences or fewer, that's already above `0.67`, so a perfectly normal short abstract can get flagged.
+- **A confidently wrong model.** Non-medical text that happens to look structured can pass all three checks.
+- **Uncalibrated scores.** The mean confidence uses softmax scores, which aren't calibrated probabilities.
+
+A more principled version would measure how often real abstracts and non-medical texts get flagged, and choose the thresholds from that.
+
 ---
 
 ### Deployment considerations

@@ -9,7 +9,7 @@ public class OodClassifier {
     static final double LOW_MEAN_CONFIDENCE_THRESHOLD = 0.45;
     static final double HIGH_VOLATILITY_THRESHOLD = 0.67;
     static final int MIN_SENTENCE_COUNT = 3;
-    static final int MAX_SENTENCE_COUNT = 30;
+    static final int MAX_SENTENCE_COUNT = 20;
 
     public boolean isLikelyOOD(List<SentPredDTO> predictions) {
         if (predictions == null) {

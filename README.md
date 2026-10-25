@@ -387,7 +387,7 @@ The frontend lives in [frontend/index.html](frontend/index.html), [frontend/scri
 - An analyze button that stays disabled until you type something
 - A clear button
 - A loading indicator while the request is running
-- A few prewritten sample abstracts, including one out-of-domain example
+- Four prewritten sample abstracts: three medical ones and one out-of-domain Robotics example
 - A structured result panel
 - An alternative predictions panel
 - A raw score table
@@ -635,7 +635,7 @@ The total number of sentences is one-hot encoded with depth `20` and passed thro
 
 This gives the model a feel for how long the abstract is, and so what kind of surroundings each sentence is in.
 
-It also means that abstracts with more than 20 sentences get truncated down to 20, and Structura flags them as OOD (Out Of Domain).
+Abstracts with more than 20 sentences go past this size. Nothing breaks, but the vector for that value is all zeros (no position information for this branch), and Structura flags those abstracts as OOD (Out Of Domain). See the [FAQ below](#why-does-line-position-use-15-slots-but-total-lines-use-20) for the details.
 
 ### Putting it together: the classification head
 
@@ -825,7 +825,7 @@ So I added a lightweight check after the model has answered. It isn't another ne
 
 The logic lives in `backend/src/main/java/com/aaryan/structura/OodClassifier.java`. It looks at the list of `SentPredDTO` objects returned by the ML service (each has the sentence, the main `predictedClass`, and its `confidence`). It returns `true` as soon as any of these three things looks off:
 
-1. **Sentence count.** The list must contain at least `3` and at most `20` sentences, and both limits are inclusive. Fewer than three sentences gives too little structure to analyze. More than thirty is beyond a normal abstract and may not fit the model's fixed position features.
+1. **Sentence count.** The list must contain at least `3` and at most `20` sentences, and both limits are inclusive. Fewer than three sentences gives too little structure to analyze. More than twenty is beyond what the model's position features cover, because the vector for the abstract's length becomes all zeros.
 
 2. **Mean confidence.** The classifier averages the main confidence of every sentence:
 
@@ -854,7 +854,7 @@ When `isLikelyOOD` is `true`, the frontend keeps every prediction as it is and s
 <img src="static/docImages/ood_flagged.png" alt="OOD flag on frontend" style="padding-left: 30%; width: 50%;">  
 <br>
 
-Please treat these checks as hints. An unusual but genuine abstract might get flagged, and a non-medical text written in the style of a clinical abstract might slip through. The thresholds (`0.45`, `0.67`, `3`, and `30`) are my own rules of thumb. If the detector ever matters for something important, they should be tuned against a labeled mix of in-domain and OOD abstracts.
+Please treat these checks as hints. An unusual but genuine abstract might get flagged, and a non-medical text written in the style of a clinical abstract might slip through. The thresholds (`0.45`, `0.67`, `3`, and `20`) are my own rules of thumb. If the detector ever matters for something important, they should be tuned against a labeled mix of in-domain and OOD abstracts.
 
 ---
 
@@ -881,7 +881,7 @@ One thing to keep in mind: the loader currently passes `skip_mismatch=True` to `
 
 Structura isn't perfect, and I'd rather you know where it struggles:
 
-- The position features have fixed sizes: `15` for a sentence's position and `20` for the total sentence count. Very long abstracts can go past these and get truncated.
+- The position features have fixed sizes: `15` for a sentence's position and `20` for the total sentence count. Past those sizes the position information is simply zeroed out (all zeros), so predictions for very long abstracts are likely less reliable.
 - The model most often mixes up `OBJECTIVE` and `BACKGROUND`, partly because of the training imbalance.
 - I haven't systematically tested non-scientific text, out-of-domain abstracts, or sentences that do more than one job.
 - It always picks one of five labels. There's no `UNKNOWN` or `MIXED` label.
@@ -916,7 +916,13 @@ For an abstract with `N` sentences, each sentence gets:
 
 Line numbers are one-hot encoded with depth `15`, and total-line values with depth `20`.
 
-These fixed sizes are part of how the model was designed. Very long abstracts can fall outside them, so test them before relying on the results.
+These fixed sizes are part of how the model was designed. Very long abstracts can fall outside them, where the position information is zeroed out, so test long inputs before relying on the results.
+
+#### Why does line position use 15 slots but total lines use 20?
+
+Both sizes were picked to cover about 95% of the sentences in PubMed 20k RCT. Each position gets its own slot in a one-hot vector, so “sentence 3” lights up slot 3. Line numbers count sentences, while total lines counts how long the whole abstract is, and the second naturally reaches higher, which is why it has more slots.
+
+If an abstract goes past those sizes, nothing crashes. The vector for that value is simply all zeros, which means “no position information” for that branch. The model still sees what the sentence says and how it’s written, but its predictions are likely less reliable. That’s why Structura flags long abstracts as possibly out of domain.
 
 ### Character features
 
@@ -999,7 +1005,7 @@ The response comes from the ML service, plus one extra field (`isLikelyOOD`) tha
 
 - The mean confidence of the main predictions is below `0.45`.
 - The rate of label changes between neighboring sentences is at least `0.67`.
-- The number of sentences is fewer than `3` or more than `30`.
+- The number of sentences is fewer than `3` or more than `20`.
 
 The sentence count comes from the same sentence-level results the FastAPI service produced. The frontend uses this flag to pick the right message to show.
 
@@ -1233,7 +1239,7 @@ That's expected. The Spring controller rejects missing or whitespace-only text w
 
 ### Predictions look unreliable for long abstracts
 
-The model uses fixed one-hot sizes of `15` for sentence positions and `20` for total-line values. Test long inputs against those limits before relying on them.
+The model uses fixed one-hot sizes of `15` for sentence positions and `20` for total-line values. Past those sizes the position vectors are all zeros, so test long inputs against those limits before relying on them.
 
 ### CORS errors appear in the browser
 

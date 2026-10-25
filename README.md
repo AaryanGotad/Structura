@@ -825,7 +825,7 @@ So I added a lightweight check after the model has answered. It isn't another ne
 
 The logic lives in `backend/src/main/java/com/aaryan/structura/OodClassifier.java`. It looks at the list of `SentPredDTO` objects returned by the ML service (each has the sentence, the main `predictedClass`, and its `confidence`). It returns `true` as soon as any of these three things looks off:
 
-1. **Sentence count.** The list must contain at least `3` and at most `30` sentences, and both limits are inclusive. Fewer than three sentences gives too little structure to analyze. More than thirty is beyond a normal abstract and may not fit the model's fixed position features.
+1. **Sentence count.** The list must contain at least `3` and at most `20` sentences, and both limits are inclusive. Fewer than three sentences gives too little structure to analyze. More than thirty is beyond a normal abstract and may not fit the model's fixed position features.
 
 2. **Mean confidence.** The classifier averages the main confidence of every sentence:
 
